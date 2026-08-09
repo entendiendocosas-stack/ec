@@ -1,0 +1,8 @@
+{
+  "name": "Entendiendo Cosas Asistente",
+  "description": "A specialized assistant for generating viral, gossip-style news summaries for Mexican WhatsApp channels based on specific editorial guidelines.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
