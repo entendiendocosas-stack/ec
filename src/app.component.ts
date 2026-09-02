@@ -267,18 +267,25 @@ interface NewsItem {
           @for (item of generatedNews(); track $index; let itemIndex = $index) {
             <!-- Card -->
             <article [attr.data-agent-id]="'result-card-' + itemIndex" class="bg-[#111] rounded-2xl shadow-2xl border border-neutral-800 overflow-hidden flex flex-col h-full hover:border-neutral-700 transition-colors duration-300 group">
-              <!-- Category Badge -->
-              <div class="px-5 py-4 border-b border-neutral-800 flex justify-between items-center bg-neutral-900/30">
-                <span class="inline-flex items-center px-3 py-1 rounded-md text-xs font-bold tracking-wide uppercase bg-blue-900/30 text-blue-300 border border-blue-800/50">
-                  {{ item.category }}
-                </span>
-                @if (item.sourceUrl) {
-                  <a [href]="item.sourceUrl" target="_blank" class="text-xs text-neutral-500 hover:text-teal-400 flex items-center gap-1.5 transition-colors touch-manipulation p-1" title="Ver fuente original">
-                    <span class="truncate max-w-[120px] sm:max-w-[150px]">Fuente Verificada</span>
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                    </svg>
-                  </a>
+              <!-- Category Badge & Title -->
+              <div class="px-5 py-3.5 border-b border-neutral-800 flex flex-col gap-1.5 bg-neutral-900/40">
+                <div class="flex justify-between items-center">
+                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-bold tracking-wide uppercase bg-blue-900/30 text-blue-300 border border-blue-800/50">
+                    {{ item.category }}
+                  </span>
+                  @if (item.sourceUrl) {
+                    <a [href]="item.sourceUrl" target="_blank" class="text-xs text-neutral-500 hover:text-teal-400 flex items-center gap-1.5 transition-colors touch-manipulation p-1" title="Ver fuente original">
+                      <span class="truncate max-w-[120px] sm:max-w-[150px]">Fuente Verificada</span>
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                    </a>
+                  }
+                </div>
+                @if (item.title) {
+                  <h3 class="text-base font-bold text-white tracking-tight leading-snug">
+                    {{ item.title }}
+                  </h3>
                 }
               </div>
 
@@ -916,26 +923,32 @@ export class AppComponent implements OnInit {
     });
 
     try {
-      const imageUrl = await this.geminiService.generateCoverImage(item.imagePrompt);
+      const rawImageUrl = await this.geminiService.generateCoverImage(item.imagePrompt);
+      const watermarkedImageUrl = await this.applyWatermarkToImage(rawImageUrl, 'entendiendocosas.lat');
 
       this.generatedNews.update(list => {
         const copy = [...list];
         copy[itemIndex] = {
           ...copy[itemIndex],
           isGeneratingImage: false,
-          generatedImageUrl: imageUrl,
+          generatedImageUrl: watermarkedImageUrl,
           imageError: undefined
         };
         return copy;
       });
     } catch (err: any) {
       console.error('Error generating cover image:', err);
+      let errorMsg = err?.message || 'No se pudo generar la portada con los modelos disponibles. Intenta de nuevo.';
+      if (typeof errorMsg === 'string' && (errorMsg.includes('403') || errorMsg.includes('PERMISSION_DENIED') || errorMsg.includes('permission'))) {
+        errorMsg = 'Tu API Key de Gemini actual no tiene habilitada la API de generación de imágenes (Imagen / Gemini Image) en Google Cloud / AI Studio. Puedes copiar el prompt visual abajo para usarlo directamente en Midjourney o DALL-E.';
+      }
+
       this.generatedNews.update(list => {
         const copy = [...list];
         copy[itemIndex] = {
           ...copy[itemIndex],
           isGeneratingImage: false,
-          imageError: err?.message || 'No se pudo generar la portada con los modelos disponibles. Intenta de nuevo.'
+          imageError: errorMsg
         };
         return copy;
       });
@@ -954,5 +967,82 @@ export class AppComponent implements OnInit {
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+  }
+
+  /**
+   * Dibuja y funde permanentemente la marca de agua entendiendocosas.lat en la esquina inferior de la imagen.
+   */
+  private applyWatermarkToImage(sourceDataUrl: string, watermarkText: string): Promise<string> {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth || 1024;
+          canvas.height = img.naturalHeight || 1024;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve(sourceDataUrl);
+            return;
+          }
+
+          // Dibujar la imagen original
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+          // Calcular proporciones según la resolución de la imagen
+          const baseDimension = Math.min(canvas.width, canvas.height);
+          const fontSize = Math.max(14, Math.round(baseDimension * 0.026));
+          const paddingX = Math.round(fontSize * 0.9);
+          const paddingY = Math.round(fontSize * 0.55);
+          const borderRadius = Math.round(fontSize * 0.4);
+          const margin = Math.round(baseDimension * 0.035);
+
+          ctx.font = `bold ${fontSize}px system-ui, -apple-system, sans-serif`;
+          const textMetrics = ctx.measureText(watermarkText);
+          const boxWidth = textMetrics.width + (paddingX * 2) + Math.round(fontSize * 0.8);
+          const boxHeight = fontSize + (paddingY * 2);
+          const x = canvas.width - boxWidth - margin;
+          const y = canvas.height - boxHeight - margin;
+
+          // Fondo de la píldora de marca de agua con sombra
+          ctx.save();
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+          ctx.shadowBlur = 10;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = 4;
+
+          ctx.fillStyle = 'rgba(10, 15, 20, 0.82)';
+          ctx.beginPath();
+          ctx.roundRect(x, y, boxWidth, boxHeight, borderRadius);
+          ctx.fill();
+
+          // Borde fino sutil
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          ctx.restore();
+
+          // Punto distintivo color menta/teal
+          const dotRadius = Math.round(fontSize * 0.22);
+          ctx.fillStyle = '#2dd4bf'; // teal-400
+          ctx.beginPath();
+          ctx.arc(x + paddingX + dotRadius, y + (boxHeight / 2), dotRadius, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Texto de la marca de agua
+          ctx.fillStyle = '#ffffff';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(watermarkText, x + paddingX + (dotRadius * 2) + Math.round(fontSize * 0.4), y + (boxHeight / 2));
+
+          resolve(canvas.toDataURL('image/png', 0.95));
+        } catch (e) {
+          console.warn('Error applying watermark to canvas, returning raw image:', e);
+          resolve(sourceDataUrl);
+        }
+      };
+      img.onerror = () => resolve(sourceDataUrl);
+      img.src = sourceDataUrl;
+    });
   }
 }

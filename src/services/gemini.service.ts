@@ -118,7 +118,12 @@ export class GeminiService {
       REGLAS DE REDACCIÓN (OBLIGATORIAS, ASÍ SE ESCRIBE EN ESTE CANAL):
 
       • Cero markdown. Nada de títulos con #, ni viñetas con guiones, ni negritas, ni tablas.
-      • Un solo emoji arriba, como parte de un título corto de 5-7 palabras. El cuerpo NO lleva emojis por línea ni banderitas.
+      • TÍTULO OBLIGATORIO AL INICIO (CLICKBAIT, ACTIVADOR DE SESGOS, MÁXIMO 6 PALABRAS):
+        - La primera línea de 'whatsappBody' DEBE ser un título sumamente llamativo, estilo clickbait inteligente y activador de sesgos cognitivos (curiosidad irresistible, urgencia, FOMO, sorpresa, alerta o beneficio/amenaza directa al bolsillo).
+        - Objetivo del título: Que incite y obligue de inmediato a abrir y leer la nota.
+        - Lleva EXACTAMENTE 1 solo emoji al inicio.
+        - LÍMITE ESTRICTO: NO MÁS DE 6 PALABRAS (contando después del emoji). Ejemplos: "🚨 Esto cambiará tu dinero hoy", "💥 Nadie esperaba este fuerte golpe", "⚠️ El error que costará caro", "🔥 Lo que nos ocultaron siempre".
+        - El resto del cuerpo de la nota NO lleva emojis por línea ni banderitas.
       • Apertura: 1-2 frases de una escena cotidiana o metáfora de la vida diaria (un niño con un control que nunca ha visto, la fila del helado, la alarma de la casa). No se explica, se suelta.
       • Lenguaje simple, oraciones cortas, tono de plática con un compa en la cantina. Sin tecnicismos sin traducir: si usas un término raro (harness, AGI, benchmark, ratio), tradúcelo a algo de la vida diaria o no lo uses.
       • Voz PLURAL siempre: nosotros, les contamos, nos toca. Cero singular.
@@ -188,8 +193,8 @@ export class GeminiService {
       [
         {
           "category": "Categoría (Detectada automáticamente)",
-          "title": "Título Corto",
-          "whatsappBody": "Texto para WhatsApp siguiendo ESTRICTAMENTE las REGLAS DE REDACCIÓN: 1 emoji en título de 5-7 palabras, apertura de 1-2 frases con metáfora o escena cotidiana, voz plural siempre ('nosotros', 'les contamos', 'nos toca'), cero markdown (sin #, ni **, ni guiones), bloque '✅ Datos duros:', '⚠️ En verificación aún:' si aplica, cierre obligatorio con 'Y esto cómo nos toca:', cero frases vetadas, longitud máxima ~220 palabras",
+          "title": "Título clickbait llamativo (máx 6 palabras)",
+          "whatsappBody": "Texto para WhatsApp siguiendo ESTRICTAMENTE las REGLAS: Primera línea con 1 emoji y título clickbait, activador de sesgos de NO MÁS DE 6 PALABRAS que incite a leer; apertura de 1-2 frases con metáfora o escena cotidiana, voz plural siempre ('nosotros', 'les contamos', 'nos toca'), cero markdown (sin #, ni **, ni guiones), bloque '✅ Datos duros:', '⚠️ En verificación aún:' si aplica, cierre obligatorio con 'Y esto cómo nos toca:', cero frases vetadas, longitud máxima ~220 palabras",
           "twitterBody": "Artículo de divulgación, amigable y explicativo en cristiano para X Premium",
           "hashtags": "#TemaImportante #ExplicaciónClara",
           "imagePrompt": "Prompt de imagen en INGLÉS",
@@ -207,7 +212,7 @@ export class GeminiService {
       
       RECORDATORIO OBLIGATORIO PARA 'whatsappBody':
       - CERO MARKDOWN: sin asteriscos (** ni *), sin títulos con #, sin viñetas con guiones (-).
-      - Un solo emoji arriba al inicio en el título de 5 a 7 palabras. Cero emojis en el resto del cuerpo (salvo ✅ Datos duros: y ⚠️ En verificación aún:).
+      - TÍTULO EN LA PRIMERA LÍNEA: 1 solo emoji al inicio + título ultra llamativo, estilo clickbait y activador de sesgos de NO MÁS DE 6 PALABRAS que obligue e incite a leer de inmediato. Cero emojis en el resto del cuerpo (salvo ✅ Datos duros: y ⚠️ En verificación aún:).
       - Apertura con 1-2 frases de una metáfora o escena cotidiana de la vida diaria (sin explicarla, suéltala directo).
       - Tono de plática con un compa en la cantina, oraciones cortas, sin tecnicismos sin traducir.
       - Voz PLURAL siempre: 'nosotros', 'les contamos', 'nos toca' (nunca en singular).
@@ -410,7 +415,7 @@ ${actionInstructions}
 
 REGLAS DE REDACCIÓN OBLIGATORIAS (CUMPLE TODAS AL 100%):
 • Cero markdown. Nada de títulos con #, ni viñetas con guiones (-), ni negritas (**), ni tablas.
-• Un solo emoji arriba, como parte de un título corto de 5-7 palabras. El cuerpo NO lleva emojis por línea ni banderitas.
+• TÍTULO OBLIGATORIO AL INICIO (CLICKBAIT, ACTIVADOR DE SESGOS, MÁXIMO 6 PALABRAS): Primera línea con exactamente 1 solo emoji y un título sumamente llamativo, estilo clickbait inteligente y activador de sesgos cognitivos (curiosidad, urgencia, FOMO, amenaza/beneficio) que incite de inmediato a leer. LÍMITE: NO MÁS DE 6 PALABRAS. El cuerpo NO lleva emojis por línea.
 • Apertura: 1-2 frases de una escena cotidiana o metáfora de la vida diaria. No se explica, se suelta.
 • Lenguaje simple, oraciones cortas, tono de plática con un compa en la cantina. Sin tecnicismos sin traducir.
 • Voz PLURAL siempre: nosotros, les contamos, nos toca. Cero singular.
@@ -501,10 +506,10 @@ Devuelve ÚNICAMENTE el texto final listo para enviar por WhatsApp, sin explicac
       console.warn('imagen-3.0-generate-002 failed:', err?.message || err);
     }
 
-    // 3. Try gemini-2.5-flash-image
+    // 3. Try gemini-3.1-flash-image
     try {
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
+        model: 'gemini-3.1-flash-image',
         contents: {
           parts: [{ text: fullPrompt }]
         },
@@ -524,7 +529,15 @@ Devuelve ÚNICAMENTE el texto final listo para enviar por WhatsApp, sin explicac
       }
     } catch (err: any) {
       lastError = err;
-      console.warn('gemini-2.5-flash-image failed:', err?.message || err);
+      console.warn('gemini-3.1-flash-image failed:', err?.message || err);
+    }
+
+    // Check if error is PERMISSION_DENIED / 403
+    const errMsg = lastError?.message || JSON.stringify(lastError || '');
+    if (errMsg.includes('403') || errMsg.includes('PERMISSION_DENIED') || errMsg.includes('does not have permission')) {
+      throw new Error(
+        'PERMISSION_DENIED: Tu API Key actual de Gemini no tiene habilitado el acceso a la API de generación de imágenes (Imagen / Gemini Image). Por favor verifica los permisos o utiliza una API Key con facturación/permisos de Imagen en Google AI Studio.'
+      );
     }
 
     throw lastError || new Error('No se pudo generar la imagen con los modelos disponibles.');
