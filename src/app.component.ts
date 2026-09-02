@@ -3,6 +3,12 @@ import { CommonModule } from '@angular/common';
 import { GeminiService } from './services/gemini.service';
 import { MatrixRainComponent } from './components/matrix-rain.component';
 
+interface NewsVersion {
+  label: string;
+  whatsappBody: string;
+  wordCount: number;
+}
+
 interface NewsItem {
   category: string;
   title: string;
@@ -12,6 +18,15 @@ interface NewsItem {
   imagePrompt: string;
   videoPrompt: string;
   sourceUrl?: string;
+  // Feature 1: Versioning & Quick Adjustments
+  versions?: NewsVersion[];
+  activeVersionIndex?: number;
+  isAdjusting?: boolean;
+  adjustmentError?: string;
+  // Feature 5: AI Cover Image Generation (1:1)
+  generatedImageUrl?: string;
+  isGeneratingImage?: boolean;
+  imageError?: string;
 }
 
 @Component({
@@ -166,8 +181,33 @@ interface NewsItem {
       </div>
     </section>
 
+    <!-- Permission Denied Warning -->
+    @if (isPermissionDenied()) {
+      <section class="mb-12 animate-in fade-in duration-700 relative" data-agent-id="permission-denied-view">
+        <div class="flex flex-col items-center justify-center text-center p-6 sm:p-8 bg-neutral-900/90 backdrop-blur-md rounded-2xl border border-red-500/30 shadow-[0_0_50px_rgba(239,68,68,0.15)] max-w-2xl mx-auto">
+          <div class="text-5xl mb-4">🔒</div>
+          <h3 class="text-2xl font-bold text-red-400 mb-2 font-mono tracking-tight">Permiso Denegado (Error 403)</h3>
+          <p class="text-neutral-300 mb-6 font-medium text-base leading-relaxed max-w-md">
+            La clave de API utilizada no tiene permisos para realizar llamadas a la API de Gemini o el proyecto no tiene habilitada la API.
+          </p>
+          <div class="bg-black/60 rounded-xl p-5 mb-6 border border-neutral-800 text-left w-full max-w-lg">
+            <h4 class="text-red-300 font-bold text-sm mb-2">Posibles soluciones:</h4>
+            <ol class="list-decimal list-inside text-xs text-neutral-400 space-y-2.5">
+              <li>Verifica que la <strong>Generative Language API</strong> esté habilitada en tu Google Cloud Console.</li>
+              <li>Si tu API Key tiene restricciones de API, asegúrate de permitir <em>Generative Language API</em>.</li>
+              <li>Genera una nueva API Key en <a href="https://aistudio.google.com/apikey" target="_blank" referrerpolicy="no-referrer" class="text-red-400 hover:underline font-bold">Google AI Studio</a>.</li>
+              <li>Configura la clave en el menú de <em>Settings &gt; Secrets</em> o en tu entorno como <code class="text-red-300">GEMINI_API_KEY</code>.</li>
+            </ol>
+          </div>
+          <button (click)="generate()" data-agent-id="btn-retry-permission" class="px-6 py-2.5 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg transition-colors shadow-lg shadow-red-900/50 uppercase tracking-wider text-xs">
+            Reintentar Generación
+          </button>
+        </div>
+      </section>
+    }
+
     <!-- Credits Depleted Warning -->
-    @if (isCreditsDepleted()) {
+    @if (isCreditsDepleted() && !isPermissionDenied()) {
       <section class="mb-12 animate-in fade-in duration-700 relative" data-agent-id="credits-depleted-view">
         <div class="flex flex-col items-center justify-center text-center p-6 sm:p-8 bg-neutral-900/90 backdrop-blur-md rounded-2xl border border-amber-500/30 shadow-[0_0_50px_rgba(245,158,11,0.15)] max-w-2xl mx-auto">
           <div class="text-5xl mb-4 animate-bounce">⚠️</div>
@@ -192,7 +232,7 @@ interface NewsItem {
     }
 
     <!-- Matrix Overload Visual -->
-    @if (isOverloaded() && !isCreditsDepleted()) {
+    @if (isOverloaded() && !isCreditsDepleted() && !isPermissionDenied()) {
       <section class="mb-12 animate-in fade-in duration-700 relative group" data-agent-id="overloaded-view">
         <app-matrix-rain class="block shadow-2xl shadow-green-900/20"></app-matrix-rain>
         
@@ -211,7 +251,7 @@ interface NewsItem {
     }
 
     <!-- Results Section -->
-    @if (generatedNews().length > 0 && !isOverloaded() && !isCreditsDepleted()) {
+    @if (generatedNews().length > 0 && !isOverloaded() && !isCreditsDepleted() && !isPermissionDenied()) {
       <section class="animate-fade-in pb-8" data-agent-id="results-container">
         <div class="flex items-center justify-between mb-6">
           <h2 class="text-xl font-bold text-white flex items-center gap-3">
@@ -224,9 +264,9 @@ interface NewsItem {
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          @for (item of generatedNews(); track $index) {
+          @for (item of generatedNews(); track $index; let itemIndex = $index) {
             <!-- Card -->
-            <article [attr.data-agent-id]="'result-card-' + $index" class="bg-[#111] rounded-2xl shadow-2xl border border-neutral-800 overflow-hidden flex flex-col h-full hover:border-neutral-700 transition-colors duration-300 group">
+            <article [attr.data-agent-id]="'result-card-' + itemIndex" class="bg-[#111] rounded-2xl shadow-2xl border border-neutral-800 overflow-hidden flex flex-col h-full hover:border-neutral-700 transition-colors duration-300 group">
               <!-- Category Badge -->
               <div class="px-5 py-4 border-b border-neutral-800 flex justify-between items-center bg-neutral-900/30">
                 <span class="inline-flex items-center px-3 py-1 rounded-md text-xs font-bold tracking-wide uppercase bg-blue-900/30 text-blue-300 border border-blue-800/50">
@@ -245,24 +285,107 @@ interface NewsItem {
               <!-- Content Area -->
               <div class="p-5 flex-grow flex flex-col gap-6">
                 
-                <!-- WhatsApp Preview -->
+                <!-- WhatsApp Preview (Feature 1: Versioning & 1-Click Adjustments) -->
                 <div class="bg-[#0b141a] p-4 rounded-xl relative border border-neutral-800/50 shadow-inner flex flex-col" style="background-image: url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png'); background-blend-mode: overlay; background-opacity: 0.05;">
-                   <div class="flex items-center gap-2 mb-2 text-[#e9edef]/60">
-                      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.445 0 .062 5.388.062 11.99c0 2.112.553 4.177 1.604 6.038L0 24l6.132-1.61c1.801.981 3.834 1.498 5.908 1.5h.005c6.604 0 11.987-5.388 11.987-11.99 0-3.201-1.243-6.211-3.498-8.468z"/></svg>
-                      <span class="text-xs font-bold uppercase tracking-widest">Vista Previa WhatsApp</span>
+                   <div class="flex items-center justify-between mb-2 text-[#e9edef]/60">
+                      <div class="flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-[#25D366]" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.445 0 .062 5.388.062 11.99c0 2.112.553 4.177 1.604 6.038L0 24l6.132-1.61c1.801.981 3.834 1.498 5.908 1.5h.005c6.604 0 11.987-5.388 11.987-11.99 0-3.201-1.243-6.211-3.498-8.468z"/></svg>
+                        <span class="text-xs font-bold uppercase tracking-widest text-[#e9edef]">Canal WhatsApp</span>
+                      </div>
+                      <span class="text-[11px] font-mono px-2 py-0.5 rounded-full bg-neutral-900 border border-neutral-700/80 text-neutral-300">
+                        {{ getWordCount(getActiveWhatsAppText(item)) }} / ~220 palabras
+                      </span>
                    </div>
+
+                   <!-- Selector de Versiones -->
+                   @if (item.versions && item.versions.length > 1) {
+                     <div class="flex items-center gap-1.5 mb-2.5 overflow-x-auto pb-1">
+                       @for (ver of item.versions; track $index; let vIdx = $index) {
+                         <button
+                           (click)="selectVersion(itemIndex, vIdx)"
+                           [class]="(item.activeVersionIndex ?? 0) === vIdx
+                             ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-sm'
+                             : 'bg-neutral-800/80 text-neutral-400 hover:text-neutral-200 border-neutral-700/70'"
+                           class="px-2.5 py-1 rounded-md text-[11px] font-semibold border transition-all flex items-center gap-1 shrink-0">
+                           <span>{{ ver.label }}</span>
+                           <span class="text-[10px] opacity-70">({{ ver.wordCount }} pal.)</span>
+                         </button>
+                       }
+                     </div>
+                   }
+
                    <div class="self-start bg-[#202c33] rounded-tr-xl rounded-br-xl rounded-bl-xl p-3.5 max-w-[98%] text-[#e9edef] text-[15px] leading-relaxed shadow-sm relative border border-[#2a3942]">
                       <div class="absolute -left-2 top-0 w-0 h-0 border-t-[10px] border-t-[#202c33] border-l-[10px] border-l-transparent transform rotate-90 z-10"></div>
-                      <div class="whitespace-pre-wrap break-words select-text font-whatsapp">{{ item.whatsappBody }}</div>
+                      <div class="whitespace-pre-wrap break-words select-text font-whatsapp">{{ getActiveWhatsAppText(item) }}</div>
                       <div class="text-[11px] text-neutral-500 text-right mt-1.5 flex justify-end items-center gap-1">
                         <span>12:45 PM</span>
                         <svg viewBox="0 0 16 15" width="16" height="15" class="text-teal-500 fill-current"><path d="M15.01 3.316l-.478-.372a.365.365 0 0 0-.51.063L8.666 9.879a.32.32 0 0 1-.484.033l-.358-.325a.319.319 0 0 0-.484.032l-.378.483a.418.418 0 0 0 .036.541l1.32 1.266c.143.14.361.125.484-.033l6.272-8.048a.366.366 0 0 0-.064-.512zm-4.1 0l-.478-.372a.365.365 0 0 0-.51.063L4.566 9.879a.32.32 0 0 1-.484.033L1.891 7.769a.366.366 0 0 0-.515.006l-.423.433a.364.364 0 0 0 .006.514l3.258 3.185c.143.14.361.125.484-.033l6.272-8.048a.365.365 0 0 0-.063-.51z"></path></svg>
                       </div>
                    </div>
+
+                   <!-- Botones de Ajuste Rápido (1 clic) -->
+                   <div class="mt-3 pt-3 border-t border-neutral-800/80 flex flex-col gap-2">
+                     <div class="flex items-center justify-between text-[11px]">
+                       <span class="font-bold text-neutral-400 flex items-center gap-1.5">
+                         <svg class="w-3.5 h-3.5 text-teal-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                         </svg>
+                         Ajustar con 1 clic:
+                       </span>
+                       @if (item.isAdjusting) {
+                         <span class="text-teal-400 font-mono flex items-center gap-1">
+                           <svg class="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
+                             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                           </svg>
+                           Generando variante...
+                         </span>
+                       }
+                     </div>
+
+                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                       <button
+                         [disabled]="item.isAdjusting"
+                         (click)="adjustWhatsApp(itemIndex, 'version_b')"
+                         title="Generar una versión alternativa con otro ángulo"
+                         class="px-2 py-2 bg-neutral-800/90 hover:bg-neutral-700/90 disabled:opacity-40 text-neutral-300 hover:text-white text-[11px] font-medium rounded-lg border border-neutral-700/60 transition-all flex items-center justify-center gap-1 shadow-sm">
+                         <span>⚡ Versión B</span>
+                       </button>
+
+                       <button
+                         [disabled]="item.isAdjusting"
+                         (click)="adjustWhatsApp(itemIndex, 'shorter')"
+                         title="Resumir a ~120-140 palabras"
+                         class="px-2 py-2 bg-neutral-800/90 hover:bg-neutral-700/90 disabled:opacity-40 text-neutral-300 hover:text-white text-[11px] font-medium rounded-lg border border-neutral-700/60 transition-all flex items-center justify-center gap-1 shadow-sm">
+                         <span>✂️ Más corta</span>
+                       </button>
+
+                       <button
+                         [disabled]="item.isAdjusting"
+                         (click)="adjustWhatsApp(itemIndex, 'new_metaphor')"
+                         title="Cambiar la escena cotidiana de apertura"
+                         class="px-2 py-2 bg-neutral-800/90 hover:bg-neutral-700/90 disabled:opacity-40 text-neutral-300 hover:text-white text-[11px] font-medium rounded-lg border border-neutral-700/60 transition-all flex items-center justify-center gap-1 shadow-sm">
+                         <span>🔄 Otra metáfora</span>
+                       </button>
+
+                       <button
+                         [disabled]="item.isAdjusting"
+                         (click)="adjustWhatsApp(itemIndex, 'deep_dive_data')"
+                         title="Enfatizar números clave y el impacto en el bolsillo"
+                         class="px-2 py-2 bg-neutral-800/90 hover:bg-neutral-700/90 disabled:opacity-40 text-neutral-300 hover:text-white text-[11px] font-medium rounded-lg border border-neutral-700/60 transition-all flex items-center justify-center gap-1 shadow-sm">
+                         <span>💡 + Dato duro</span>
+                       </button>
+                     </div>
+
+                     @if (item.adjustmentError) {
+                       <p class="text-rose-400 text-[10px] bg-rose-950/40 p-1.5 rounded border border-rose-800/50 mt-1">{{ item.adjustmentError }}</p>
+                     }
+                   </div>
+
                    <button
-                     id="btn-copy-wa-{{$index}}"
-                     (click)="copyToClipboard(item.whatsappBody, 'btn-copy-wa-' + $index)"
-                     class="mt-3 w-full bg-[#1db954]/10 hover:bg-[#1db954]/20 border border-[#1db954]/30 text-[#1db954] text-xs font-bold py-2 rounded-lg transition-all flex items-center justify-center gap-2">
+                     id="btn-copy-wa-{{itemIndex}}"
+                     (click)="copyToClipboard(getActiveWhatsAppText(item), 'btn-copy-wa-' + itemIndex)"
+                     class="mt-3 w-full bg-[#1db954]/10 hover:bg-[#1db954]/20 border border-[#1db954]/30 text-[#1db954] text-xs font-bold py-2.5 rounded-lg transition-all flex items-center justify-center gap-2 shadow-sm">
                      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
                      </svg>
@@ -283,8 +406,8 @@ interface NewsItem {
                       <span class="text-blue-400 text-sm font-medium">{{ item.hashtags }}</span>
                    </div>
                    <button
-                     id="btn-copy-x-{{$index}}"
-                     (click)="copyToClipboard(item.twitterBody + ' ' + item.hashtags, 'btn-copy-x-' + $index)"
+                     id="btn-copy-x-{{itemIndex}}"
+                     (click)="copyToClipboard(item.twitterBody + ' ' + item.hashtags, 'btn-copy-x-' + itemIndex)"
                      class="mt-1 w-full bg-white/5 hover:bg-white/10 border border-neutral-700 text-white text-xs font-bold py-2.5 rounded-lg transition-all flex items-center justify-center gap-2 uppercase tracking-wide">
                      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
@@ -293,31 +416,90 @@ interface NewsItem {
                    </button>
                 </div>
 
-                <!-- Prompt Blocks Section -->
+                <!-- Prompt Blocks Section & AI Image Generation (Feature 5) -->
                 <div class="grid gap-3">
-                   <!-- Image Prompt -->
-                   <div class="bg-neutral-900/50 rounded-lg border border-neutral-800 p-3 flex flex-col gap-2 group/prompt">
+                   <!-- Image Prompt & AI Cover Generation -->
+                   <div class="bg-neutral-900/50 rounded-lg border border-neutral-800 p-3 flex flex-col gap-3 group/prompt">
                       <div class="flex items-center justify-between">
                          <div class="flex items-center gap-2 text-indigo-400">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                             </svg>
-                            <span class="text-xs font-bold tracking-wider uppercase">Prompt Imagen</span>
+                            <span class="text-xs font-bold tracking-wider uppercase">Portada Cuadrada (1:1)</span>
                          </div>
-                         <span class="text-[10px] text-neutral-600">Midjourney / DALL-E</span>
+                         <span class="text-[10px] text-neutral-400 bg-indigo-950/40 border border-indigo-800/40 px-2 py-0.5 rounded-full">IA Generativa</span>
                       </div>
-                      <p 
-                        (click)="togglePromptExpansion('img-' + $index)"
-                        class="text-xs text-neutral-500 font-code leading-relaxed cursor-pointer transition-all duration-200 hover:text-neutral-300"
-                        [class.line-clamp-2]="!isPromptExpanded('img-' + $index)">
-                        {{item.imagePrompt}}
-                      </p>
-                      <button 
-                        id="btn-prompt-img-{{$index}}"
-                        (click)="copyToClipboard(item.imagePrompt, 'btn-prompt-img-' + $index)"
-                        class="w-full mt-1 bg-indigo-900/10 border border-indigo-500/20 hover:bg-indigo-900/30 hover:border-indigo-500/40 text-indigo-300 text-xs font-semibold py-2 rounded-md transition-colors flex items-center justify-center gap-2">
-                        Copiar para Imagen
-                      </button>
+
+                      <!-- AI Generated Cover Image Preview if present -->
+                      @if (item.generatedImageUrl) {
+                        <div class="relative rounded-xl overflow-hidden border border-indigo-500/40 shadow-xl bg-black aspect-square max-w-[280px] sm:max-w-xs mx-auto w-full group/cover">
+                           <img [src]="item.generatedImageUrl" alt="Portada de la noticia" class="w-full h-full object-cover transition-transform duration-500 group-hover/cover:scale-105" />
+                           <div class="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent flex flex-col justify-end p-3 gap-2">
+                              <div class="flex items-center justify-between">
+                                 <span class="text-[11px] font-semibold text-white/90 truncate max-w-[140px]">{{ item.title }}</span>
+                                 <span class="text-[10px] bg-teal-500/80 text-black font-bold px-1.5 py-0.5 rounded">1:1 Cuadrada</span>
+                              </div>
+                              <div class="grid grid-cols-2 gap-2">
+                                 <button
+                                   (click)="downloadImage(item.generatedImageUrl, item.title)"
+                                   class="px-2.5 py-1.5 bg-white hover:bg-neutral-200 text-black text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow">
+                                   <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                                   </svg>
+                                   Descargar
+                                 </button>
+                                 <button
+                                   [disabled]="item.isGeneratingImage"
+                                   (click)="generateImageForNews(itemIndex)"
+                                   class="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow">
+                                   🔄 Regenerar
+                                 </button>
+                              </div>
+                           </div>
+                        </div>
+                      } @else {
+                        <!-- Generate Cover Button -->
+                        <button
+                          [disabled]="item.isGeneratingImage"
+                          (click)="generateImageForNews(itemIndex)"
+                          class="w-full bg-gradient-to-r from-teal-600 via-emerald-600 to-indigo-600 hover:from-teal-500 hover:via-emerald-500 hover:to-indigo-500 disabled:opacity-40 text-white text-xs font-bold py-2.5 px-3 rounded-lg shadow-lg shadow-teal-950/40 transition-all flex items-center justify-center gap-2">
+                          @if (item.isGeneratingImage) {
+                            <svg class="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                            </svg>
+                            <span>Generando Portada con IA...</span>
+                          } @else {
+                            <svg class="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                            </svg>
+                            <span>🎨 Generar Portada Cuadrada (1:1) con IA</span>
+                          }
+                        </button>
+                      }
+
+                      @if (item.imageError) {
+                        <p class="text-rose-400 text-[11px] bg-rose-950/40 p-2 rounded-lg border border-rose-800/50">{{ item.imageError }}</p>
+                      }
+
+                      <!-- Prompt text & copy button -->
+                      <div class="pt-2 border-t border-neutral-800/60">
+                        <div class="flex items-center justify-between mb-1">
+                           <span class="text-[10px] text-neutral-500 uppercase tracking-wide font-mono">Prompt para Midjourney / DALL-E</span>
+                        </div>
+                        <p 
+                          (click)="togglePromptExpansion('img-' + itemIndex)"
+                          class="text-xs text-neutral-500 font-code leading-relaxed cursor-pointer transition-all duration-200 hover:text-neutral-300"
+                          [class.line-clamp-2]="!isPromptExpanded('img-' + itemIndex)">
+                          {{item.imagePrompt}}
+                        </p>
+                        <button 
+                          id="btn-prompt-img-{{itemIndex}}"
+                          (click)="copyToClipboard(item.imagePrompt, 'btn-prompt-img-' + itemIndex)"
+                          class="w-full mt-2 bg-indigo-900/10 border border-indigo-500/20 hover:bg-indigo-900/30 hover:border-indigo-500/40 text-indigo-300 text-xs font-semibold py-1.5 rounded-md transition-colors flex items-center justify-center gap-2">
+                          Copiar Prompt de Imagen
+                        </button>
+                      </div>
                    </div>
 
                    <!-- Video Prompt -->
@@ -332,14 +514,14 @@ interface NewsItem {
                          <span class="text-[10px] text-neutral-600">Runway / Pika</span>
                       </div>
                       <p 
-                        (click)="togglePromptExpansion('vid-' + $index)"
+                        (click)="togglePromptExpansion('vid-' + itemIndex)"
                         class="text-xs text-neutral-500 font-code leading-relaxed cursor-pointer transition-all duration-200 hover:text-neutral-300"
-                        [class.line-clamp-2]="!isPromptExpanded('vid-' + $index)">
+                        [class.line-clamp-2]="!isPromptExpanded('vid-' + itemIndex)">
                         {{item.videoPrompt}}
                       </p>
                        <button 
-                        id="btn-prompt-vid-{{$index}}"
-                        (click)="copyToClipboard(item.videoPrompt, 'btn-prompt-vid-' + $index)"
+                        id="btn-prompt-vid-{{itemIndex}}"
+                        (click)="copyToClipboard(item.videoPrompt, 'btn-prompt-vid-' + itemIndex)"
                         class="w-full mt-1 bg-rose-900/10 border border-rose-500/20 hover:bg-rose-900/30 hover:border-rose-500/40 text-rose-300 text-xs font-semibold py-2 rounded-md transition-colors flex items-center justify-center gap-2">
                         Copiar para Video
                       </button>
@@ -351,8 +533,8 @@ interface NewsItem {
               <!-- Actions Footer -->
               <div class="p-4 bg-neutral-900 border-t border-neutral-800">
                 <button
-                  id="btn-copy-all-{{$index}}"
-                  (click)="copyToClipboard(item.whatsappBody + '\n\n' + item.twitterBody + '\n\n' + item.hashtags, 'btn-copy-all-' + $index)"
+                  id="btn-copy-all-{{itemIndex}}"
+                  (click)="copyToClipboard(getActiveWhatsAppText(item) + '\n\n' + item.twitterBody + '\n\n' + item.hashtags, 'btn-copy-all-' + itemIndex)"
                   class="w-full h-12 flex items-center justify-center gap-2.5 px-4 bg-neutral-800 border border-neutral-700 rounded-xl text-sm font-semibold text-neutral-300 hover:bg-neutral-700 hover:text-white transition-all shadow-sm touch-manipulation active:scale-95">
                   <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
@@ -390,6 +572,7 @@ export class AppComponent implements OnInit {
   error = signal<string | null>(null);
   isOverloaded = signal<boolean>(false); // New state for 503 errors
   isCreditsDepleted = signal<boolean>(false); // New state for depleted credits
+  isPermissionDenied = signal<boolean>(false); // New state for 403 permission errors
   expandedPrompts = signal<Set<string>>(new Set());
   customQuery = signal<string>('');
 
@@ -398,6 +581,7 @@ export class AppComponent implements OnInit {
   availableTopicsJson = computed(() => JSON.stringify(this.availableTopics));
   agentStateStr = computed(() => {
     if (this.isLoading()) return 'processing';
+    if (this.isPermissionDenied()) return 'permission_denied';
     if (this.isCreditsDepleted()) return 'credits_depleted';
     if (this.isOverloaded()) return 'overloaded';
     if (this.error()) return 'error';
@@ -543,17 +727,37 @@ export class AppComponent implements OnInit {
     this.error.set(null);
     this.isOverloaded.set(false); // Reset overloaded state
     this.isCreditsDepleted.set(false); // Reset depleted credits state
+    this.isPermissionDenied.set(false); // Reset permission denied state
     this.generatedNews.set([]);
 
     try {
-      const news = await this.geminiService.generateNewsContent(topics, query);
-      this.generatedNews.set(news);
+      const rawNews = await this.geminiService.generateNewsContent(topics, query);
+      const newsWithVersions: NewsItem[] = (rawNews || []).map(item => ({
+        ...item,
+        versions: [
+          {
+            label: 'Versión A (Original)',
+            whatsappBody: item.whatsappBody,
+            wordCount: this.getWordCount(item.whatsappBody)
+          }
+        ],
+        activeVersionIndex: 0
+      }));
+      this.generatedNews.set(newsWithVersions);
     } catch (err: any) {
       console.error("Error detected:", err);
       const errorMessage = (err.message || JSON.stringify(err) || '').toLowerCase();
       
-      // Check for specific depleted credits error message
+      // Check for 403 Permission Denied
       if (
+        errorMessage.includes('permission_denied') ||
+        errorMessage.includes('does not have permission') ||
+        errorMessage.includes('permissiondenied') ||
+        errorMessage.includes('403') ||
+        errorMessage.includes('forbidden')
+      ) {
+        this.isPermissionDenied.set(true);
+      } else if (
         errorMessage.includes('prepayment') ||
         errorMessage.includes('depleted') ||
         errorMessage.includes('prepay') ||
@@ -599,5 +803,156 @@ export class AppComponent implements OnInit {
         }, 2000);
       }
     });
+  }
+
+  getWordCount(text: string): number {
+    if (!text) return 0;
+    return text.trim().split(/\s+/).filter(Boolean).length;
+  }
+
+  getActiveWhatsAppText(item: NewsItem): string {
+    if (item.versions && item.activeVersionIndex !== undefined && item.versions[item.activeVersionIndex]) {
+      return item.versions[item.activeVersionIndex].whatsappBody;
+    }
+    return item.whatsappBody;
+  }
+
+  selectVersion(itemIndex: number, versionIndex: number) {
+    this.generatedNews.update(items => {
+      const updated = [...items];
+      const item = { ...updated[itemIndex] };
+      item.activeVersionIndex = versionIndex;
+      item.whatsappBody = item.versions?.[versionIndex]?.whatsappBody || item.whatsappBody;
+      updated[itemIndex] = item;
+      return updated;
+    });
+  }
+
+  async adjustWhatsApp(
+    itemIndex: number,
+    action: 'version_b' | 'shorter' | 'new_metaphor' | 'deep_dive_data'
+  ) {
+    const items = this.generatedNews();
+    const item = items[itemIndex];
+    if (!item || item.isAdjusting) return;
+
+    this.generatedNews.update(list => {
+      const copy = [...list];
+      copy[itemIndex] = {
+        ...copy[itemIndex],
+        isAdjusting: true,
+        adjustmentError: undefined
+      };
+      return copy;
+    });
+
+    try {
+      const currentText = this.getActiveWhatsAppText(item);
+      const newText = await this.geminiService.generateAlternativeWhatsAppText(
+        currentText,
+        action,
+        item.category || item.title
+      );
+
+      const labelMap: Record<string, string> = {
+        version_b: '⚡ Versión B',
+        shorter: '✂️ Más Corta',
+        new_metaphor: '🔄 Nueva Metáfora',
+        deep_dive_data: '💡 Más Dato Duro'
+      };
+
+      const newVersionLabel = labelMap[action] || 'Variante';
+      const wordCount = this.getWordCount(newText);
+
+      this.generatedNews.update(list => {
+        const copy = [...list];
+        const currentItem = { ...copy[itemIndex] };
+        const versions = currentItem.versions ? [...currentItem.versions] : [
+          { label: 'Versión A (Original)', whatsappBody: currentItem.whatsappBody, wordCount: this.getWordCount(currentItem.whatsappBody) }
+        ];
+
+        const existingIdx = versions.findIndex(v => v.label === newVersionLabel);
+        if (existingIdx >= 0) {
+          versions[existingIdx] = { label: newVersionLabel, whatsappBody: newText, wordCount };
+          currentItem.activeVersionIndex = existingIdx;
+        } else {
+          versions.push({ label: newVersionLabel, whatsappBody: newText, wordCount });
+          currentItem.activeVersionIndex = versions.length - 1;
+        }
+
+        currentItem.versions = versions;
+        currentItem.whatsappBody = newText;
+        currentItem.isAdjusting = false;
+        copy[itemIndex] = currentItem;
+        return copy;
+      });
+    } catch (err: any) {
+      console.error('Error adjusting WhatsApp text:', err);
+      this.generatedNews.update(list => {
+        const copy = [...list];
+        copy[itemIndex] = {
+          ...copy[itemIndex],
+          isAdjusting: false,
+          adjustmentError: err?.message || 'No se pudo generar el ajuste. Intenta de nuevo.'
+        };
+        return copy;
+      });
+    }
+  }
+
+  async generateImageForNews(itemIndex: number) {
+    const items = this.generatedNews();
+    const item = items[itemIndex];
+    if (!item || item.isGeneratingImage) return;
+
+    this.generatedNews.update(list => {
+      const copy = [...list];
+      copy[itemIndex] = {
+        ...copy[itemIndex],
+        isGeneratingImage: true,
+        imageError: undefined
+      };
+      return copy;
+    });
+
+    try {
+      const imageUrl = await this.geminiService.generateCoverImage(item.imagePrompt);
+
+      this.generatedNews.update(list => {
+        const copy = [...list];
+        copy[itemIndex] = {
+          ...copy[itemIndex],
+          isGeneratingImage: false,
+          generatedImageUrl: imageUrl,
+          imageError: undefined
+        };
+        return copy;
+      });
+    } catch (err: any) {
+      console.error('Error generating cover image:', err);
+      this.generatedNews.update(list => {
+        const copy = [...list];
+        copy[itemIndex] = {
+          ...copy[itemIndex],
+          isGeneratingImage: false,
+          imageError: err?.message || 'No se pudo generar la portada con los modelos disponibles. Intenta de nuevo.'
+        };
+        return copy;
+      });
+    }
+  }
+
+  downloadImage(imageUrl: string, title: string) {
+    const cleanTitle = (title || 'portada-noticia')
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '-')
+      .substring(0, 35);
+
+    const a = document.createElement('a');
+    a.href = imageUrl;
+    a.download = `${cleanTitle}-portada-1x1.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   }
 }

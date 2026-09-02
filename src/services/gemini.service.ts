@@ -53,6 +53,7 @@ export class GeminiService {
   }
 
   async generateNewsContent(topics: string[], customQuery?: string): Promise<any[]> {
+    this.isSearchSupported = true;
     const modelId = 'gemini-2.5-flash';
     
     // Expand Tech Regions into their constituents for better search context
@@ -113,35 +114,32 @@ export class GeminiService {
       searchContext = `Busca en Google las noticias más recientes e impactantes de HOY. Temas: ${topicsString}. ${focusInstruction}`;
     }
 
-    const styleInstructions = `
-      1. **INICIO DIRECTO Y EXPLOSIVO:** PROHIBIDO usar frases de relleno como "Nos enteramos de...", "Les traemos...", "Atención gente...", "¿Sabían que...?". 
-         - Empieza DIRECTAMENTE con el sujeto y la acción. 
-         - Ejemplo MAL: "Amigos, nos enteramos de que Google lanzó..."
-         - Ejemplo BIEN: "¡Google acaba de lanzar Gemini 3 y cambia todo el juego!"
-      
-      2. **Audiencia:** Mexicanos. Habla en plural ("nosotros") como medio, pero sé conciso.
-      
-      3. **DIETA DE EMOJIS:** Úsalos con moderación extrema. Máximo 2 o 3 por mensaje completo. Úsalos como "balas" o para resaltar algo muy grave, no para decorar.
-      
-      4. **Profundidad:** Desarrolla la noticia en 3 párrafos breves.
-         - Párrafo 1: El hecho (Qué pasó).
-         - Párrafo 2: El contexto (Por qué importa / Qué hay detrás).
-         - Párrafo 3: La consecuencia (Qué va a pasar).
-      
-      5. **CIERRE LIMPIO (SIN REACCIONES):**
-         - Termina la noticia con el punto final del tercer párrafo.
-         - PROHIBIDO agregar preguntas ("¿Qué opinan?").
-         - PROHIBIDO pedir reacciones ("Dale like si...").
-         - El contenido debe hablar por sí mismo y ser informativo.
-      
-      6. **Tono:** Chisme Responsable pero SERIO en los datos. No uses jerga excesiva ("qué onda", "chale") a menos que la noticia sea muy ligera. Mantén la autoridad periodística pero con lenguaje sencillo.
+    const whatsappEditorialRules = `
+      REGLAS DE REDACCIÓN (OBLIGATORIAS, ASÍ SE ESCRIBE EN ESTE CANAL):
+
+      • Cero markdown. Nada de títulos con #, ni viñetas con guiones, ni negritas, ni tablas.
+      • Un solo emoji arriba, como parte de un título corto de 5-7 palabras. El cuerpo NO lleva emojis por línea ni banderitas.
+      • Apertura: 1-2 frases de una escena cotidiana o metáfora de la vida diaria (un niño con un control que nunca ha visto, la fila del helado, la alarma de la casa). No se explica, se suelta.
+      • Lenguaje simple, oraciones cortas, tono de plática con un compa en la cantina. Sin tecnicismos sin traducir: si usas un término raro (harness, AGI, benchmark, ratio), tradúcelo a algo de la vida diaria o no lo uses.
+      • Voz PLURAL siempre: nosotros, les contamos, nos toca. Cero singular.
+      • Datos duros presentados en lenguaje humano, siempre con el porqué importa.
+      • Un bloque "✅ Datos duros:" al final con los números clave (sin guiones ni viñetas markdown), y si algo no está confirmado, un bloque "⚠️ En verificación aún:".
+      • Cierre obligatorio con la pregunta "Y esto cómo nos toca:" conectando con la vida real de la gente: empleos, bolsillo, familia.
+      • Frases vetadas (ESTRICTAMENTE PROHIBIDAS):
+        - "Aquí está el pedo" (PROHIBIDO)
+        - Groserías (PROHIBIDO)
+        - Spanglish (PROHIBIDO)
+        - "para la raza" (PROHIBIDO: decir siempre "para nosotros")
+        - "Tu Lente" (PROHIBIDO: decir siempre "nuestro análisis")
+      • No repitas contexto que la gente ya sabe de memoria del tema en curso.
+      • Longitud: nota corta, no más de ~220 palabras.
     `;
 
     const systemPrompt = `
-      Actúa como un editor experto de un canal de noticias de WhatsApp en México.
+      Actúa como un editor experto de un canal de noticias de WhatsApp y de X (Twitter).
       
       OBJETIVO PRINCIPAL:
-      Investigar, validar y generar contenido viral basado en la solicitud del usuario.
+      Investigar, validar y generar contenido de alto impacto basado en la solicitud del usuario.
       
       CONTEXTO DE OPERACIÓN:
       ${focusInstruction}
@@ -151,11 +149,11 @@ export class GeminiService {
       - Si es BÚSQUEDA: Si hay un tema específico, esa es la prioridad. Si hay múltiples, busca intersecciones. Prioriza 'Última Hora'.
       
       HERRAMIENTA OBLIGATORIA:
-      Usa Google Search para encontrar o validar la información.
+      Usa Google Search para encontrar o validar la información cuando esté disponible.
       Si el usuario dio una URL, úsala como referencia principal y ponla en 'sourceUrl'.
 
-      REGLAS DE ESTILO (CRÍTICO E INNEGOCIABLE):
-      ${styleInstructions}
+      REGLAS DE ESTILO PARA WHATSAPP (CRÍTICO E INNEGOCIABLE):
+      ${whatsappEditorialRules}
       
       REGLAS PARA RED SOCIAL X (ANTES TWITTER) - DIVULGACIÓN CERCANA Y NATURAL:
       - El campo 'twitterBody' debe ser una nota de divulgación escrita con un tono sumamente humano, cercano, fresco y fácil de entender.
@@ -191,7 +189,7 @@ export class GeminiService {
         {
           "category": "Categoría (Detectada automáticamente)",
           "title": "Título Corto",
-          "whatsappBody": "Texto del mensaje optimizado para canal de WhatsApp",
+          "whatsappBody": "Texto para WhatsApp siguiendo ESTRICTAMENTE las REGLAS DE REDACCIÓN: 1 emoji en título de 5-7 palabras, apertura de 1-2 frases con metáfora o escena cotidiana, voz plural siempre ('nosotros', 'les contamos', 'nos toca'), cero markdown (sin #, ni **, ni guiones), bloque '✅ Datos duros:', '⚠️ En verificación aún:' si aplica, cierre obligatorio con 'Y esto cómo nos toca:', cero frases vetadas, longitud máxima ~220 palabras",
           "twitterBody": "Artículo de divulgación, amigable y explicativo en cristiano para X Premium",
           "hashtags": "#TemaImportante #ExplicaciónClara",
           "imagePrompt": "Prompt de imagen en INGLÉS",
@@ -206,29 +204,45 @@ export class GeminiService {
       ${searchContext}
       
       Genera ${isUrl ? '1 propuesta optimizada basada en el enlace' : '3 a 5 propuestas detalladas'}. 
-      Asegúrate de NO empezar con saludos ni frases de relleno.
-      NO agregues ninguna llamada a la acción o pregunta al final.
+      
+      RECORDATORIO OBLIGATORIO PARA 'whatsappBody':
+      - CERO MARKDOWN: sin asteriscos (** ni *), sin títulos con #, sin viñetas con guiones (-).
+      - Un solo emoji arriba al inicio en el título de 5 a 7 palabras. Cero emojis en el resto del cuerpo (salvo ✅ Datos duros: y ⚠️ En verificación aún:).
+      - Apertura con 1-2 frases de una metáfora o escena cotidiana de la vida diaria (sin explicarla, suéltala directo).
+      - Tono de plática con un compa en la cantina, oraciones cortas, sin tecnicismos sin traducir.
+      - Voz PLURAL siempre: 'nosotros', 'les contamos', 'nos toca' (nunca en singular).
+      - Bloque final '✅ Datos duros:' con números clave explicados humanamente, y si no está confirmado '⚠️ En verificación aún:'.
+      - Cierre obligatorio: 'Y esto cómo nos toca:' conectando con el bolsillo, familia o empleo.
+      - Prohibido: 'Aquí está el pedo', groserías, spanglish, 'para la raza' (usar 'para nosotros'), 'Tu Lente' (usar 'nuestro análisis').
+      - Máximo ~220 palabras.
     `;
 
-    // Configuración robusta de reintentos con fallbacks de modelos y herramientas
+    // Configuración robusta de reintentos con fallbacks de modelos reales soportados y herramientas
     const configsToTry: { model: string; disableSearch: boolean }[] = [];
     
+    if (this.isSearchSupported) {
+      configsToTry.push({ model: 'gemini-3.7-flash', disableSearch: false });
+    }
+    configsToTry.push({ model: 'gemini-3.7-flash', disableSearch: true });
+
     if (this.isSearchSupported) {
       configsToTry.push({ model: 'gemini-2.5-flash', disableSearch: false });
     }
     configsToTry.push({ model: 'gemini-2.5-flash', disableSearch: true });
-    
-    if (this.isSearchSupported) {
-      configsToTry.push({ model: 'gemini-3.5-flash', disableSearch: false });
-    }
-    configsToTry.push({ model: 'gemini-3.5-flash', disableSearch: true });
     configsToTry.push({ model: 'gemini-flash-latest', disableSearch: true });
+    configsToTry.push({ model: 'gemini-3.1-flash-lite', disableSearch: true });
 
     let configIndex = 0;
     let lastError: any = null;
 
     while (configIndex < configsToTry.length) {
       const currentConfig = configsToTry[configIndex];
+      // Si la búsqueda ya fue detectada como no soportada durante este bucle, saltar intentos con búsqueda
+      if (!this.isSearchSupported && !currentConfig.disableSearch) {
+        configIndex++;
+        continue;
+      }
+
       const currentModelId = currentConfig.model;
       const disableSearch = currentConfig.disableSearch;
 
@@ -240,8 +254,12 @@ export class GeminiService {
           temperature: 0.85
         };
 
+        // Only attach googleSearch tool if supported and search is not disabled
         if (!disableSearch) {
-          config.tools = isUrl ? [{ urlContext: {} }] : [{ googleSearch: {} }];
+          config.tools = [{ googleSearch: {} }];
+        } else {
+          // When search is disabled, we can enforce JSON response format
+          config.responseMimeType = 'application/json';
         }
         
         console.log(`Intentando generación (Intento ${configIndex + 1}/${configsToTry.length}) con modelo: ${currentModelId} (Herramientas activas: ${!disableSearch})`);
@@ -252,30 +270,80 @@ export class GeminiService {
           config: config
         });
 
-        const text = response.text;
-        if (!text) throw new Error('La IA no generó texto.');
+        // Robust text extraction from response
+        let text = response.text || '';
+        
+        // If response.text is empty or undefined, look into candidates and parts
+        if (!text && response.candidates && response.candidates.length > 0) {
+          const parts = response.candidates[0].content?.parts || [];
+          // Filter out thought parts if any
+          const textParts = parts.filter((p: any) => p.text && !p.thought);
+          if (textParts.length > 0) {
+            text = textParts.map((p: any) => p.text).join('\n');
+          } else {
+            text = parts.map((p: any) => p.text || '').join('\n');
+          }
+        }
+
+        if (!text || !text.trim()) {
+          const finishReason = response.candidates?.[0]?.finishReason;
+          if (finishReason === 'SAFETY' || finishReason === 'BLOCKLIST' || finishReason === 'PROHIBITED_CONTENT') {
+            throw new Error(`La respuesta fue bloqueada por políticas de seguridad (${finishReason}).`);
+          }
+          throw new Error('La IA no generó texto en este intento.');
+        }
 
         console.log('Respuesta RAW Gemini exitosa:', text); 
 
         // Limpieza y extracción del JSON
-        let jsonString = text;
-        const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/) || text.match(/```\s*([\s\S]*?)\s*```/);
+        let jsonString = text.trim();
+        const jsonMatch = jsonString.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
         if (jsonMatch) {
-          jsonString = jsonMatch[1];
+          jsonString = jsonMatch[1].trim();
         }
 
+        let parsedData: any = null;
+
         try {
-          return JSON.parse(jsonString);
+          parsedData = JSON.parse(jsonString);
         } catch (e) {
           console.warn('Error parseando JSON inicial, intentando método de recuperación:', e);
+          
+          // Try extracting array [...]
           const arrayStart = jsonString.indexOf('[');
           const arrayEnd = jsonString.lastIndexOf(']');
-          if (arrayStart !== -1 && arrayEnd !== -1) {
+          if (arrayStart !== -1 && arrayEnd !== -1 && arrayEnd > arrayStart) {
             const cleanJson = jsonString.substring(arrayStart, arrayEnd + 1);
-            return JSON.parse(cleanJson);
+            parsedData = JSON.parse(cleanJson);
+          } else {
+            // Try extracting single object {...}
+            const objStart = jsonString.indexOf('{');
+            const objEnd = jsonString.lastIndexOf('}');
+            if (objStart !== -1 && objEnd !== -1 && objEnd > objStart) {
+              const cleanJson = jsonString.substring(objStart, objEnd + 1);
+              parsedData = JSON.parse(cleanJson);
+            }
           }
+        }
+
+        if (!parsedData) {
           throw new Error('No se pudo extraer JSON válido de la respuesta.');
         }
+
+        // If the model returned a single object instead of an array, wrap it
+        if (!Array.isArray(parsedData)) {
+          if (typeof parsedData === 'object' && parsedData !== null) {
+            parsedData = [parsedData];
+          } else {
+            throw new Error('El formato devuelto por la IA no es una lista de noticias válida.');
+          }
+        }
+
+        // Apply cleaning and formatting rules to whatsappBody across all items
+        return parsedData.map((item: any) => ({
+          ...item,
+          whatsappBody: this.cleanWhatsAppText(item.whatsappBody || '')
+        }));
 
       } catch (error: any) {
         lastError = error;
@@ -302,5 +370,186 @@ export class GeminiService {
 
     console.error('Final error generating news después de todos los fallbacks:', lastError);
     throw lastError || new Error('No se pudo generar contenido con ningún modelo disponible.');
+  }
+
+  async generateAlternativeWhatsAppText(
+    currentText: string,
+    action: 'version_b' | 'shorter' | 'new_metaphor' | 'deep_dive_data',
+    contextTopic?: string
+  ): Promise<string> {
+    const ai = this.getAiClient();
+
+    let actionInstructions = '';
+    switch (action) {
+      case 'version_b':
+        actionInstructions = `Crea una VERSIÓN B completamente alternativa y fresca de esta misma noticia. Usa una metáfora o escena cotidiana de la vida diaria mexicana diferente y aborda el tema desde otro ángulo interesante.`;
+        break;
+      case 'shorter':
+        actionInstructions = `Reescribe el texto haciéndolo mucho más CORTO, ágil y directo (~120-140 palabras). Conserva una apertura con metáfora veloz, los datos duros esenciales en '✅ Datos duros:' y el cierre 'Y esto cómo nos toca:'.`;
+        break;
+      case 'new_metaphor':
+        actionInstructions = `Conserva toda la información y los datos clave, pero CAMBIA ÚNICAMENTE la escena cotidiana o metáfora de apertura por una completamente nueva de la vida diaria (ej. la fila de las tortillas, el camión que no pasa, el control de la tele sin pilas, etc.). Suéltala directo sin explicarla.`;
+        break;
+      case 'deep_dive_data':
+        actionInstructions = `Reescribe el texto poniendo especial énfasis en explicar con lenguaje humano los números clave en el bloque '✅ Datos duros:' y profundizando en por qué le pegan directamente al bolsillo, familia o empleo en 'Y esto cómo nos toca:'.`;
+        break;
+    }
+
+    const prompt = `
+Actúa como un editor experto de un canal de noticias de WhatsApp en México.
+
+TEXTO ACTUAL DE REFERENCIA:
+"""
+${currentText}
+"""
+
+${contextTopic ? `TEMA: ${contextTopic}` : ''}
+
+INSTRUCCIÓN DE AJUSTE:
+${actionInstructions}
+
+REGLAS DE REDACCIÓN OBLIGATORIAS (CUMPLE TODAS AL 100%):
+• Cero markdown. Nada de títulos con #, ni viñetas con guiones (-), ni negritas (**), ni tablas.
+• Un solo emoji arriba, como parte de un título corto de 5-7 palabras. El cuerpo NO lleva emojis por línea ni banderitas.
+• Apertura: 1-2 frases de una escena cotidiana o metáfora de la vida diaria. No se explica, se suelta.
+• Lenguaje simple, oraciones cortas, tono de plática con un compa en la cantina. Sin tecnicismos sin traducir.
+• Voz PLURAL siempre: nosotros, les contamos, nos toca. Cero singular.
+• Datos duros presentados en lenguaje humano, siempre con el porqué importa.
+• Un bloque "✅ Datos duros:" al final con los números clave (sin guiones ni viñetas markdown), y si algo no está confirmado, un bloque "⚠️ En verificación aún:".
+• Cierre obligatorio con la pregunta "Y esto cómo nos toca:" conectando con la vida real de la gente: empleos, bolsillo, familia.
+• Frases vetadas: Aquí está el pedo, groserías, spanglish, para la raza (decir: para nosotros), y Tu Lente (decir: nuestro análisis).
+• Longitud: nota corta, no más de ~220 palabras.
+
+Devuelve ÚNICAMENTE el texto final listo para enviar por WhatsApp, sin explicaciones ni saludos previos.
+`;
+
+    const modelsToTry = ['gemini-2.5-flash', 'gemini-3.7-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'];
+    let lastError: any = null;
+
+    for (const model of modelsToTry) {
+      try {
+        const response = await ai.models.generateContent({
+          model,
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          config: {
+            temperature: 0.8
+          }
+        });
+
+        const text = response.text?.trim() || '';
+        if (text) {
+          return this.cleanWhatsAppText(text);
+        }
+      } catch (err) {
+        lastError = err;
+        console.warn(`Error ajustando texto con modelo ${model}:`, err);
+      }
+    }
+
+    throw lastError || new Error('No se pudo ajustar el texto de WhatsApp.');
+  }
+
+  async generateCoverImage(imagePrompt: string): Promise<string> {
+    const ai = this.getAiClient();
+    let lastError: any = null;
+
+    const fullPrompt = `${imagePrompt}. Square composition, striking editorial cover visual, clean high resolution, rich lighting, 1:1 aspect ratio, cinematic digital art.`;
+
+    // 1. Try gemini-3.1-flash-lite-image
+    try {
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.1-flash-lite-image',
+        contents: {
+          parts: [{ text: fullPrompt }]
+        },
+        config: {
+          imageConfig: {
+            aspectRatio: '1:1'
+          }
+        }
+      });
+
+      for (const candidate of response.candidates || []) {
+        for (const part of candidate.content?.parts || []) {
+          if (part.inlineData?.data) {
+            return `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
+          }
+        }
+      }
+    } catch (err: any) {
+      lastError = err;
+      console.warn('gemini-3.1-flash-lite-image failed:', err?.message || err);
+    }
+
+    // 2. Try imagen-3.0-generate-002
+    try {
+      const response = await (ai.models as any).generateImages({
+        model: 'imagen-3.0-generate-002',
+        prompt: fullPrompt,
+        config: {
+          numberOfImages: 1,
+          aspectRatio: '1:1',
+          outputMimeType: 'image/jpeg'
+        }
+      });
+
+      if (response.generatedImages?.[0]?.image?.imageBytes) {
+        return `data:image/jpeg;base64,${response.generatedImages[0].image.imageBytes}`;
+      }
+    } catch (err: any) {
+      lastError = err;
+      console.warn('imagen-3.0-generate-002 failed:', err?.message || err);
+    }
+
+    // 3. Try gemini-2.5-flash-image
+    try {
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash-image',
+        contents: {
+          parts: [{ text: fullPrompt }]
+        },
+        config: {
+          imageConfig: {
+            aspectRatio: '1:1'
+          }
+        }
+      });
+
+      for (const candidate of response.candidates || []) {
+        for (const part of candidate.content?.parts || []) {
+          if (part.inlineData?.data) {
+            return `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
+          }
+        }
+      }
+    } catch (err: any) {
+      lastError = err;
+      console.warn('gemini-2.5-flash-image failed:', err?.message || err);
+    }
+
+    throw lastError || new Error('No se pudo generar la imagen con los modelos disponibles.');
+  }
+
+  private cleanWhatsAppText(text: string): string {
+    if (!text) return '';
+    let cleaned = text;
+
+    // Eliminar negritas y cursivas markdown (**texto**, *texto*, __texto__, _texto_)
+    cleaned = cleaned.replace(/\*\*(.*?)\*\*/g, '$1');
+    cleaned = cleaned.replace(/__(.*?)__/g, '$1');
+    cleaned = cleaned.replace(/(^|[^\*])\*([^\*\n]+)\*([^\*]|$)/g, '$1$2$3');
+
+    // Eliminar encabezados markdown (# Título, ## Título)
+    cleaned = cleaned.replace(/^#{1,6}\s+/gm, '');
+
+    // Eliminar viñetas con guiones o asteriscos al inicio de línea (- texto, * texto)
+    cleaned = cleaned.replace(/^[ \t]*[\-\*][ \t]+/gm, '');
+
+    // Reemplazo de frases vetadas si se llegaran a colar
+    cleaned = cleaned.replace(/Aquí está el pedo/gi, '');
+    cleaned = cleaned.replace(/para la raza/gi, 'para nosotros');
+    cleaned = cleaned.replace(/Tu Lente/gi, 'nuestro análisis');
+
+    return cleaned.trim();
   }
 }
