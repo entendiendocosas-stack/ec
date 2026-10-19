@@ -1,6 +1,6 @@
 import { Component, signal, inject, computed, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { GeminiService } from './services/gemini.service';
+import { GeminiService, XTrend, DEFAULT_X_TRENDS } from './services/gemini.service';
 import { MatrixRainComponent } from './components/matrix-rain.component';
 
 interface NewsVersion {
@@ -27,6 +27,13 @@ interface NewsItem {
   generatedImageUrl?: string;
   isGeneratingImage?: boolean;
   imageError?: string;
+  // Feature: X Post Formats & Versioning
+  twitterVersions?: { label: string; twitterBody: string }[];
+  activeTwitterVersionIndex?: number;
+  isAdjustingTwitter?: boolean;
+  twitterAdjustmentError?: string;
+  // Feature: Trends selector
+  showTrendSelector?: boolean;
 }
 
 @Component({
@@ -116,6 +123,93 @@ interface NewsItem {
              <span class="text-xs text-neutral-600 border border-neutral-800 rounded px-1.5 py-0.5">Opcional</span>
           }
         </div>
+      </div>
+      
+      <!-- Radar de Tendencias en X (Twitter) -->
+      <div class="mb-6 p-3.5 sm:p-4 rounded-xl bg-neutral-900/90 border border-neutral-800 shadow-md backdrop-blur-sm">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+          <div class="flex items-center gap-2.5">
+            <div class="p-2 rounded-lg bg-black border border-neutral-700 text-white flex items-center justify-center shrink-0">
+              <svg viewBox="0 0 24 24" class="h-4 w-4 fill-current"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path></svg>
+            </div>
+            <div>
+              <div class="flex items-center gap-2">
+                <h3 class="text-xs sm:text-sm font-bold text-white tracking-wide">Radar de Tendencias en X (Twitter)</h3>
+                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-sky-950 text-sky-400 border border-sky-800">
+                  <span class="w-1.5 h-1.5 rounded-full bg-sky-400 mr-1 animate-pulse"></span>
+                  En Vivo Hoy
+                </span>
+              </div>
+              <p class="text-[11px] text-neutral-400">Hashtags y temas calientes en México y el mundo para potenciar el alcance de tus publicaciones</p>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+            <!-- Toggle Auto-link -->
+            <button 
+              (click)="toggleAutoLinkXTrends()"
+              [title]="autoLinkXTrends() ? 'La IA conectará automáticamente hashtags en tendencia afines a la noticia investigada' : 'Vincular tendencias desactivado'"
+              class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer"
+              [class]="autoLinkXTrends() 
+                ? 'bg-sky-950/80 text-sky-300 border-sky-600/70 shadow-[0_0_12px_rgba(14,165,233,0.2)]' 
+                : 'bg-neutral-800 text-neutral-400 border-neutral-700 hover:text-neutral-200'">
+              <span class="w-2 h-2 rounded-full" [class]="autoLinkXTrends() ? 'bg-sky-400 shadow-[0_0_6px_rgba(56,189,248,0.8)]' : 'bg-neutral-600'"></span>
+              <span>{{ autoLinkXTrends() ? 'Vincular a notas: SÍ' : 'Vincular a notas: NO' }}</span>
+            </button>
+
+            <!-- Refresh Button -->
+            <button 
+              [disabled]="isLoadingTrends()"
+              (click)="loadXTrends()"
+              class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-neutral-200 hover:text-white transition-all disabled:opacity-40 cursor-pointer shadow-sm">
+              @if (isLoadingTrends()) {
+                <svg class="animate-spin h-3.5 w-3.5 text-sky-400" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                </svg>
+                <span>Escaneando X...</span>
+              } @else {
+                <svg class="h-3.5 w-3.5 text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                <span>Actualizar</span>
+              }
+            </button>
+          </div>
+        </div>
+
+        <!-- Trends Chips Row -->
+        <div class="flex flex-wrap gap-2 pt-1 max-h-48 overflow-y-auto pr-1">
+          @for (trend of xTrends(); track trend.hashtag; let i = $index) {
+            <div 
+              class="group/chip relative flex items-center gap-1.5 bg-neutral-950/80 hover:bg-neutral-800/90 border border-neutral-800 hover:border-sky-500/50 rounded-lg px-2.5 py-1.5 transition-all text-xs">
+              <span class="text-[10px] font-mono text-neutral-500 group-hover/chip:text-sky-400 font-bold">#{{ i + 1 }}</span>
+              <button 
+                (click)="copyTrend(trend.hashtag)"
+                [title]="trend.summary ? trend.summary : 'Copiar hashtag ' + trend.hashtag"
+                class="font-semibold text-neutral-200 group-hover/chip:text-white hover:underline flex items-center gap-1 cursor-pointer">
+                {{ trend.hashtag }}
+              </button>
+              @if (trend.postsCount) {
+                <span class="text-[10px] text-neutral-500 group-hover/chip:text-neutral-400 font-mono">({{ trend.postsCount }})</span>
+              }
+              <button
+                (click)="addTrendToAllOrActive(trend.hashtag)"
+                title="Añadir este hashtag a todas las notas generadas"
+                class="ml-1 text-sky-400 hover:text-white hover:bg-sky-600/40 px-1.5 py-0.5 rounded text-[10px] font-bold transition-colors cursor-pointer">
+                + Añadir a notas
+              </button>
+            </div>
+          }
+        </div>
+
+        <!-- Feedback message if trend added or copied -->
+        @if (trendFeedbackMessage()) {
+          <div class="mt-2 text-xs text-sky-300 bg-sky-950/60 border border-sky-800/60 rounded px-3 py-1 flex items-center justify-between animate-in fade-in">
+            <span>{{ trendFeedbackMessage() }}</span>
+            <button (click)="trendFeedbackMessage.set(null)" class="text-neutral-400 hover:text-white ml-2 cursor-pointer">✕</button>
+          </div>
+        }
       </div>
       
       <!-- Topics Grid -->
@@ -300,7 +394,7 @@ interface NewsItem {
                         <span class="text-xs font-bold uppercase tracking-widest text-[#e9edef]">Canal WhatsApp</span>
                       </div>
                       <span class="text-[11px] font-mono px-2 py-0.5 rounded-full bg-neutral-900 border border-neutral-700/80 text-neutral-300">
-                        {{ getWordCount(getActiveWhatsAppText(item)) }} / ~220 palabras
+                        {{ getWordCount(getActiveWhatsAppText(item)) }} / 250-350 palabras
                       </span>
                    </div>
 
@@ -354,7 +448,7 @@ interface NewsItem {
                        <button
                          [disabled]="item.isAdjusting"
                          (click)="adjustWhatsApp(itemIndex, 'version_b')"
-                         title="Generar una versión alternativa con otro ángulo"
+                         title="Versión alternativa con el método hablarle al oído"
                          class="px-2 py-2 bg-neutral-800/90 hover:bg-neutral-700/90 disabled:opacity-40 text-neutral-300 hover:text-white text-[11px] font-medium rounded-lg border border-neutral-700/60 transition-all flex items-center justify-center gap-1 shadow-sm">
                          <span>⚡ Versión B</span>
                        </button>
@@ -362,15 +456,15 @@ interface NewsItem {
                        <button
                          [disabled]="item.isAdjusting"
                          (click)="adjustWhatsApp(itemIndex, 'shorter')"
-                         title="Resumir a ~120-140 palabras"
+                         title="Ajustar al límite de ~250 palabras"
                          class="px-2 py-2 bg-neutral-800/90 hover:bg-neutral-700/90 disabled:opacity-40 text-neutral-300 hover:text-white text-[11px] font-medium rounded-lg border border-neutral-700/60 transition-all flex items-center justify-center gap-1 shadow-sm">
-                         <span>✂️ Más corta</span>
+                         <span>✂️ ~250 pal.</span>
                        </button>
 
                        <button
                          [disabled]="item.isAdjusting"
                          (click)="adjustWhatsApp(itemIndex, 'new_metaphor')"
-                         title="Cambiar la escena cotidiana de apertura"
+                         title="Cambiar la metáfora que sirve a la idea"
                          class="px-2 py-2 bg-neutral-800/90 hover:bg-neutral-700/90 disabled:opacity-40 text-neutral-300 hover:text-white text-[11px] font-medium rounded-lg border border-neutral-700/60 transition-all flex items-center justify-center gap-1 shadow-sm">
                          <span>🔄 Otra metáfora</span>
                        </button>
@@ -378,7 +472,7 @@ interface NewsItem {
                        <button
                          [disabled]="item.isAdjusting"
                          (click)="adjustWhatsApp(itemIndex, 'deep_dive_data')"
-                         title="Enfatizar números clave y el impacto en el bolsillo"
+                         title="Desglosar cifra: qué es, a qué equivale, qué significa y a quién le pega"
                          class="px-2 py-2 bg-neutral-800/90 hover:bg-neutral-700/90 disabled:opacity-40 text-neutral-300 hover:text-white text-[11px] font-medium rounded-lg border border-neutral-700/60 transition-all flex items-center justify-center gap-1 shadow-sm">
                          <span>💡 + Dato duro</span>
                        </button>
@@ -391,35 +485,189 @@ interface NewsItem {
 
                    <button
                      id="btn-copy-wa-{{itemIndex}}"
-                     (click)="copyToClipboard(getActiveWhatsAppText(item), 'btn-copy-wa-' + itemIndex)"
-                     class="mt-3 w-full bg-[#1db954]/10 hover:bg-[#1db954]/20 border border-[#1db954]/30 text-[#1db954] text-xs font-bold py-2.5 rounded-lg transition-all flex items-center justify-center gap-2 shadow-sm">
-                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
-                     </svg>
-                     COPIAR PARA WHATSAPP
+                     (click)="copyWhatsAppPost(itemIndex)"
+                     [class]="copiedButtonId() === ('btn-copy-wa-' + itemIndex)
+                       ? 'bg-emerald-950/80 border-emerald-500 text-emerald-300'
+                       : 'bg-[#1db954]/10 hover:bg-[#1db954]/20 border-[#1db954]/30 text-[#1db954]'"
+                     class="mt-3 w-full border text-xs font-bold py-2.5 rounded-lg transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer">
+                     @if (copiedButtonId() === ('btn-copy-wa-' + itemIndex)) {
+                       <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                       </svg>
+                       <span class="text-emerald-400 font-bold">¡Copiado para WhatsApp!</span>
+                     } @else {
+                       <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                       </svg>
+                       <span>COPIAR PARA WHATSAPP</span>
+                     }
                    </button>
                 </div>
 
                 <!-- X (Twitter) Preview -->
-                <div class="bg-black p-4 rounded-xl border border-neutral-800 shadow-xl flex flex-col gap-3">
-                   <div class="flex items-center gap-2 text-white">
-                      <svg viewBox="0 0 24 24" class="h-5 w-5 fill-current"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path></svg>
-                      <span class="text-xs font-bold uppercase tracking-widest text-[#71767b]">Post para X (Twitter)</span>
+                <div class="bg-black p-4 rounded-xl border border-neutral-800 shadow-xl flex flex-col gap-3 relative overflow-hidden">
+                   @if (item.isAdjustingTwitter) {
+                     <div class="absolute inset-0 bg-black/85 backdrop-blur-xs flex flex-col items-center justify-center z-10 gap-2">
+                        <div class="w-6 h-6 border-2 border-sky-400 border-t-transparent rounded-full animate-spin"></div>
+                        <span class="text-xs text-sky-300 font-medium">Reescribiendo formato para X...</span>
+                     </div>
+                   }
+
+                   <div class="flex items-center justify-between">
+                      <div class="flex items-center gap-2 text-white">
+                         <svg viewBox="0 0 24 24" class="h-5 w-5 fill-current"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path></svg>
+                         <span class="text-xs font-bold uppercase tracking-widest text-[#71767b]">Post para X (Twitter)</span>
+                      </div>
+                      <span class="text-[10px] bg-sky-950 text-sky-400 border border-sky-800/80 px-2 py-0.5 rounded font-mono">Algoritmo 2026</span>
                    </div>
-                   <div class="text-[15px] leading-normal text-white selection:bg-blue-500/30 whitespace-pre-wrap break-words">
-                      {{ item.twitterBody }}
+
+                   <!-- Versiones de X si existen -->
+                   @if (item.twitterVersions && item.twitterVersions.length > 1) {
+                     <div class="flex items-center gap-1.5 overflow-x-auto pb-1">
+                        @for (ver of item.twitterVersions; track $index) {
+                          <button
+                            (click)="selectTwitterVersion(itemIndex, $index)"
+                            [class]="item.activeTwitterVersionIndex === $index
+                              ? 'bg-sky-500/20 text-sky-300 border-sky-500/80 font-bold'
+                              : 'bg-neutral-900/80 text-neutral-400 border-neutral-800 hover:text-neutral-200'"
+                            class="px-2.5 py-1 text-[11px] rounded-lg border transition-all shrink-0 cursor-pointer">
+                            {{ ver.label }}
+                          </button>
+                        }
+                     </div>
+                   }
+
+                   <div class="text-[15px] leading-relaxed text-white selection:bg-blue-500/30 whitespace-pre-wrap break-words">
+                      {{ getActiveTwitterText(item) }}
                    </div>
-                   <div class="flex flex-wrap gap-2 mt-1">
-                      <span class="text-blue-400 text-sm font-medium">{{ item.hashtags }}</span>
+
+                   <!-- Quick Format Adjustments Toolbar for X -->
+                   <div class="pt-2 border-t border-neutral-900 flex flex-col gap-1.5">
+                      <div class="flex items-center justify-between">
+                         <span class="text-[10px] text-neutral-500 uppercase tracking-wider font-semibold">Formato y tono en X:</span>
+                         <span class="text-[10px] text-neutral-500">1 clic para adaptar</span>
+                      </div>
+                      <div class="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                         <button
+                           (click)="adjustTwitter(itemIndex, 'hook_viral')"
+                           [disabled]="item.isAdjustingTwitter"
+                           title="Gancho inicial demoledor para detener el scroll"
+                           class="px-2 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-sky-300 text-[11px] font-medium rounded-lg border border-neutral-800 transition-all flex items-center justify-center gap-1 cursor-pointer">
+                           <span>⚡ Gancho Viral</span>
+                         </button>
+                         <button
+                           (click)="adjustTwitter(itemIndex, 'thread')"
+                           [disabled]="item.isAdjustingTwitter"
+                           title="Formato mini-hilo numerado 1/3, 2/3, 3/3 para mayor retención y guardados"
+                           class="px-2 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-sky-300 text-[11px] font-medium rounded-lg border border-neutral-800 transition-all flex items-center justify-center gap-1 cursor-pointer">
+                           <span>🧵 Mini-Hilo (1/3)</span>
+                         </button>
+                         <button
+                           (click)="adjustTwitter(itemIndex, 'debate')"
+                           [disabled]="item.isAdjustingTwitter"
+                           title="Pregunta polémica o dilema para maximizar respuestas (replies >50x likes en el algoritmo)"
+                           class="px-2 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-sky-300 text-[11px] font-medium rounded-lg border border-neutral-800 transition-all flex items-center justify-center gap-1 cursor-pointer">
+                           <span>💬 Debate</span>
+                         </button>
+                         <button
+                           (click)="adjustTwitter(itemIndex, 'key_takeaways')"
+                           [disabled]="item.isAdjustingTwitter"
+                           title="3 viñetas limpias con las conclusiones clave para lectura ultra rápida"
+                           class="px-2 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-sky-300 text-[11px] font-medium rounded-lg border border-neutral-800 transition-all flex items-center justify-center gap-1 cursor-pointer">
+                           <span>📌 3 Claves</span>
+                         </button>
+                      </div>
+                      @if (item.twitterAdjustmentError) {
+                        <p class="text-rose-400 text-[10px] bg-rose-950/40 p-1.5 rounded border border-rose-800/50 mt-1">{{ item.twitterAdjustmentError }}</p>
+                      }
                    </div>
+
+                   <!-- Hashtags with Live X Trends inserter -->
+                   <div class="mt-1 flex flex-col gap-2.5 bg-neutral-900/60 p-3 rounded-xl border border-neutral-800">
+                      <div class="flex items-center justify-between">
+                         <div class="flex items-center gap-2">
+                            <span class="text-[10px] text-neutral-400 font-mono uppercase tracking-wider font-semibold">Hashtags de X:</span>
+                            @if (item.hashtags?.includes('#EntendiendoCosas')) {
+                               <span class="text-[9px] bg-teal-950 text-teal-300 border border-teal-800/80 px-1.5 py-0.5 rounded font-medium">Oficial</span>
+                            }
+                            @if (item.hashtags) {
+                               <span class="text-[9px] bg-neutral-800 text-neutral-400 border border-neutral-700 px-1.5 py-0.5 rounded font-mono">
+                                 {{ countHashtags(item.hashtags) }} tags
+                               </span>
+                            }
+                         </div>
+                         <button
+                           (click)="toggleTrendSelector(itemIndex)"
+                           class="text-[11px] text-sky-400 hover:text-sky-300 font-semibold flex items-center gap-1 hover:underline cursor-pointer">
+                           <span>{{ item.showTrendSelector ? '✕ Ocultar Tendencias' : '🔥 + Agregar Tendencia de Hoy' }}</span>
+                         </button>
+                      </div>
+
+                      <!-- Trending quick picker if opened -->
+                      @if (item.showTrendSelector) {
+                        <div class="p-2.5 bg-neutral-950/90 rounded-lg border border-sky-800/60 flex flex-col gap-2 animate-in fade-in">
+                           <div class="flex items-center justify-between">
+                             <span class="text-[11px] text-neutral-300 font-medium">Toca cualquier tendencia para agregar o quitar de esta nota:</span>
+                             <span class="text-[10px] text-sky-400 font-mono">Tiempo Real</span>
+                           </div>
+                           <div class="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto pr-1">
+                              @for (trend of xTrends(); track trend.hashtag) {
+                                <button
+                                  (click)="toggleTrendInCard(itemIndex, trend.hashtag)"
+                                  [title]="isTrendInCard(item, trend.hashtag) ? 'Toca para quitar ' + trend.hashtag : 'Toca para agregar ' + trend.hashtag"
+                                  class="text-[11px] px-2.5 py-1 rounded-md border transition-all flex items-center gap-1.5 cursor-pointer select-none"
+                                  [class]="isTrendInCard(item, trend.hashtag) 
+                                    ? 'bg-sky-500/20 text-sky-200 border-sky-400 font-bold shadow-sm' 
+                                    : 'bg-neutral-900 text-neutral-300 border-neutral-700/80 hover:bg-neutral-800 hover:text-white'">
+                                  <span>{{ trend.hashtag }}</span>
+                                  @if (isTrendInCard(item, trend.hashtag)) {
+                                    <span class="text-[10px] text-sky-400 font-bold">✓</span>
+                                  } @else {
+                                    <span class="text-[10px] text-neutral-500 font-bold">+</span>
+                                  }
+                                </button>
+                              }
+                           </div>
+                        </div>
+                      }
+
+                      <div class="flex items-start justify-between gap-3 pt-1 border-t border-neutral-800/80">
+                         <div class="text-sky-400 text-sm font-medium break-words leading-relaxed selection:bg-sky-500/30 flex-1">
+                            {{ item.hashtags || 'Sin hashtags' }}
+                         </div>
+                         <button
+                           id="btn-copy-hash-{{itemIndex}}"
+                           (click)="copyHashtagsOnly(itemIndex)"
+                           title="Copiar únicamente la lista de hashtags"
+                           class="text-[11px] text-neutral-300 hover:text-white bg-neutral-800/80 hover:bg-neutral-750 border border-neutral-700 px-2.5 py-1 rounded-md transition-colors shrink-0 flex items-center gap-1 cursor-pointer">
+                           @if (copiedButtonId() === ('btn-copy-hash-' + itemIndex)) {
+                             <span class="text-emerald-400 font-bold">✓ Copiados</span>
+                           } @else {
+                             <span>Copiar hashtags</span>
+                           }
+                         </button>
+                      </div>
+                   </div>
+
+                   <!-- Copy Button for X -->
                    <button
                      id="btn-copy-x-{{itemIndex}}"
-                     (click)="copyToClipboard(item.twitterBody + ' ' + item.hashtags, 'btn-copy-x-' + itemIndex)"
-                     class="mt-1 w-full bg-white/5 hover:bg-white/10 border border-neutral-700 text-white text-xs font-bold py-2.5 rounded-lg transition-all flex items-center justify-center gap-2 uppercase tracking-wide">
-                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
-                     </svg>
-                     Copiar Post + Hashtags
+                     (click)="copyXPost(itemIndex)"
+                     [class]="copiedButtonId() === ('btn-copy-x-' + itemIndex)
+                       ? 'bg-emerald-950/80 border-emerald-500 text-emerald-300 shadow-md shadow-emerald-950/50'
+                       : 'bg-white/5 hover:bg-white/10 border-neutral-700 text-white hover:border-neutral-500'"
+                     class="mt-1 w-full border text-xs font-bold py-2.5 rounded-lg transition-all flex items-center justify-center gap-2 uppercase tracking-wide cursor-pointer shadow-sm">
+                     @if (copiedButtonId() === ('btn-copy-x-' + itemIndex)) {
+                       <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                       </svg>
+                       <span class="text-emerald-400 font-bold">¡Post + Hashtags Copiados!</span>
+                     } @else {
+                       <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                       </svg>
+                       <span>Copiar Post + Hashtags</span>
+                     }
                    </button>
                 </div>
 
@@ -428,23 +676,23 @@ interface NewsItem {
                    <!-- Image Prompt & AI Cover Generation -->
                    <div class="bg-neutral-900/50 rounded-lg border border-neutral-800 p-3 flex flex-col gap-3 group/prompt">
                       <div class="flex items-center justify-between">
-                         <div class="flex items-center gap-2 text-indigo-400">
+                         <div class="flex items-center gap-2 text-rose-400">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                             </svg>
-                            <span class="text-xs font-bold tracking-wider uppercase">Portada Cuadrada (1:1)</span>
+                            <span class="text-xs font-bold tracking-wider uppercase">Imagen Editorial (4:5)</span>
                          </div>
-                         <span class="text-[10px] text-neutral-400 bg-indigo-950/40 border border-indigo-800/40 px-2 py-0.5 rounded-full">IA Generativa</span>
+                         <span class="text-[10px] text-rose-200 bg-rose-950/70 border border-rose-700/60 px-2 py-0.5 rounded-full font-medium">Nano Banana 2.1</span>
                       </div>
 
                       <!-- AI Generated Cover Image Preview if present -->
                       @if (item.generatedImageUrl) {
-                        <div class="relative rounded-xl overflow-hidden border border-indigo-500/40 shadow-xl bg-black aspect-square max-w-[280px] sm:max-w-xs mx-auto w-full group/cover">
-                           <img [src]="item.generatedImageUrl" alt="Portada de la noticia" class="w-full h-full object-cover transition-transform duration-500 group-hover/cover:scale-105" />
+                        <div class="relative rounded-xl overflow-hidden border border-rose-500/40 shadow-xl bg-black aspect-[4/5] max-w-[260px] sm:max-w-[280px] mx-auto w-full group/cover">
+                           <img [src]="item.generatedImageUrl" alt="Póster editorial de la noticia" class="w-full h-full object-cover transition-transform duration-500 group-hover/cover:scale-105" />
                            <div class="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent flex flex-col justify-end p-3 gap-2">
                               <div class="flex items-center justify-between">
                                  <span class="text-[11px] font-semibold text-white/90 truncate max-w-[140px]">{{ item.title }}</span>
-                                 <span class="text-[10px] bg-teal-500/80 text-black font-bold px-1.5 py-0.5 rounded">1:1 Cuadrada</span>
+                                 <span class="text-[10px] bg-rose-600 text-white font-bold px-1.5 py-0.5 rounded">NB 2.1 • 4:5</span>
                               </div>
                               <div class="grid grid-cols-2 gap-2">
                                  <button
@@ -458,7 +706,7 @@ interface NewsItem {
                                  <button
                                    [disabled]="item.isGeneratingImage"
                                    (click)="generateImageForNews(itemIndex)"
-                                   class="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow">
+                                   class="px-2.5 py-1.5 bg-rose-600 hover:bg-rose-500 disabled:opacity-40 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow">
                                    🔄 Regenerar
                                  </button>
                               </div>
@@ -469,18 +717,18 @@ interface NewsItem {
                         <button
                           [disabled]="item.isGeneratingImage"
                           (click)="generateImageForNews(itemIndex)"
-                          class="w-full bg-gradient-to-r from-teal-600 via-emerald-600 to-indigo-600 hover:from-teal-500 hover:via-emerald-500 hover:to-indigo-500 disabled:opacity-40 text-white text-xs font-bold py-2.5 px-3 rounded-lg shadow-lg shadow-teal-950/40 transition-all flex items-center justify-center gap-2">
+                          class="w-full bg-gradient-to-r from-red-700 via-rose-700 to-amber-700 hover:from-red-600 hover:via-rose-600 hover:to-amber-600 disabled:opacity-40 text-white text-xs font-bold py-2.5 px-3 rounded-lg shadow-lg shadow-red-950/40 transition-all flex items-center justify-center gap-2">
                           @if (item.isGeneratingImage) {
                             <svg class="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
                               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
                             </svg>
-                            <span>Generando Portada con IA...</span>
+                            <span>Generando con Nano Banana 2.1...</span>
                           } @else {
                             <svg class="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
                             </svg>
-                            <span>🎨 Generar Portada Cuadrada (1:1) con IA</span>
+                            <span>🎨 Generar Portada Editorial (Nano Banana 2.1)</span>
                           }
                         </button>
                       }
@@ -493,6 +741,10 @@ interface NewsItem {
                       <div class="pt-2 border-t border-neutral-800/60">
                         <div class="flex items-center justify-between mb-1">
                            <span class="text-[10px] text-neutral-500 uppercase tracking-wide font-mono">Prompt para Midjourney / DALL-E</span>
+                           <span class="text-[10px] font-mono flex items-center gap-0.5 bg-neutral-950 px-1.5 py-0.5 rounded border border-neutral-800 whitespace-nowrap" title="Marca de agua editorial: 'entendiendocosas.lat' en una sola línea ('entendiendo' en rojo y 'cosas.lat' en negro)">
+                             <span class="text-neutral-500 mr-0.5">Marca:</span>
+                             <span class="text-[#E34234] font-semibold">entendiendo</span><span class="text-neutral-300 font-semibold">cosas.lat</span>
+                           </span>
                         </div>
                         <p 
                           (click)="togglePromptExpansion('img-' + itemIndex)"
@@ -541,12 +793,22 @@ interface NewsItem {
               <div class="p-4 bg-neutral-900 border-t border-neutral-800">
                 <button
                   id="btn-copy-all-{{itemIndex}}"
-                  (click)="copyToClipboard(getActiveWhatsAppText(item) + '\n\n' + item.twitterBody + '\n\n' + item.hashtags, 'btn-copy-all-' + itemIndex)"
-                  class="w-full h-12 flex items-center justify-center gap-2.5 px-4 bg-neutral-800 border border-neutral-700 rounded-xl text-sm font-semibold text-neutral-300 hover:bg-neutral-700 hover:text-white transition-all shadow-sm touch-manipulation active:scale-95">
-                  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  (click)="copyAll(itemIndex)"
+                  [class]="copiedButtonId() === ('btn-copy-all-' + itemIndex)
+                    ? 'bg-emerald-950/80 border-emerald-500 text-emerald-300'
+                    : 'bg-neutral-800 border-neutral-700 text-neutral-300 hover:bg-neutral-700 hover:text-white'"
+                  class="w-full h-12 flex items-center justify-center gap-2.5 px-4 border rounded-xl text-sm font-semibold transition-all shadow-sm touch-manipulation active:scale-95 cursor-pointer">
+                  @if (copiedButtonId() === ('btn-copy-all-' + itemIndex)) {
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span class="text-emerald-400 font-bold">¡Todo Copiado! (WhatsApp + X + Hashtags)</span>
+                  } @else {
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                  </svg>
-                  <span>Copiar Todo (WhatsApp + X)</span>
+                    </svg>
+                    <span>Copiar Todo (WhatsApp + X + Hashtags)</span>
+                  }
                 </button>
               </div>
 
@@ -583,6 +845,13 @@ export class AppComponent implements OnInit {
   expandedPrompts = signal<Set<string>>(new Set());
   customQuery = signal<string>('');
 
+  // State for X (Twitter) Trends
+  xTrends = signal<XTrend[]>(DEFAULT_X_TRENDS);
+  isLoadingTrends = signal<boolean>(false);
+  autoLinkXTrends = signal<boolean>(true);
+  trendFeedbackMessage = signal<string | null>(null);
+  copiedButtonId = signal<string | null>(null);
+
   // Agent State Computed Helpers
   agentOutputJson = computed(() => JSON.stringify(this.generatedNews(), null, 2));
   availableTopicsJson = computed(() => JSON.stringify(this.availableTopics));
@@ -597,6 +866,9 @@ export class AppComponent implements OnInit {
   });
 
   ngOnInit() {
+    // Automatically load fresh X trends in background on start
+    this.loadXTrends();
+
     // Check URL parameters for Agent automatic interaction
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
@@ -738,7 +1010,10 @@ export class AppComponent implements OnInit {
     this.generatedNews.set([]);
 
     try {
-      const rawNews = await this.geminiService.generateNewsContent(topics, query);
+      const activeTrendsList = this.autoLinkXTrends() 
+        ? this.xTrends().map(t => `${t.hashtag} (${t.topic})`)
+        : [];
+      const rawNews = await this.geminiService.generateNewsContent(topics, query, activeTrendsList);
       const newsWithVersions: NewsItem[] = (rawNews || []).map(item => ({
         ...item,
         versions: [
@@ -748,7 +1023,14 @@ export class AppComponent implements OnInit {
             wordCount: this.getWordCount(item.whatsappBody)
           }
         ],
-        activeVersionIndex: 0
+        activeVersionIndex: 0,
+        twitterVersions: [
+          {
+            label: 'Original 2026',
+            twitterBody: item.twitterBody
+          }
+        ],
+        activeTwitterVersionIndex: 0
       }));
       this.generatedNews.set(newsWithVersions);
     } catch (err: any) {
@@ -788,28 +1070,120 @@ export class AppComponent implements OnInit {
     }
   }
 
-  copyToClipboard(text: string, id: string) {
-    navigator.clipboard.writeText(text).then(() => {
-      const btn = document.getElementById(id);
-      if (btn) {
-        const originalContent = btn.innerHTML;
-        const originalClasses = btn.className;
-        
-        // Show success state
-        btn.innerHTML = `
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-          </svg>
-          <span class="text-emerald-400">¡Copiado!</span>
-        `;
-        btn.className = `${originalClasses} bg-emerald-900/30 border-emerald-800`;
-        
-        setTimeout(() => {
-           btn.innerHTML = originalContent;
-           btn.className = originalClasses;
-        }, 2000);
+  async copyToClipboard(text: string, id: string): Promise<boolean> {
+    let success = false;
+
+    // 1. Try modern navigator.clipboard
+    if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        success = true;
+      } catch (err) {
+        console.warn('navigator.clipboard.writeText error, attempting textarea fallback:', err);
       }
-    });
+    }
+
+    // 2. Fallback using temporary textarea (crucial for iframe environments)
+    if (!success && typeof document !== 'undefined') {
+      try {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.setAttribute('readonly', '');
+        textarea.style.position = 'fixed';
+        textarea.style.top = '0';
+        textarea.style.left = '-9999px';
+        textarea.style.width = '2em';
+        textarea.style.height = '2em';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        textarea.setSelectionRange(0, textarea.value.length);
+        success = document.execCommand('copy');
+        document.body.removeChild(textarea);
+      } catch (err) {
+        console.error('execCommand copy fallback failed:', err);
+      }
+    }
+
+    if (id) {
+      this.copiedButtonId.set(id);
+      setTimeout(() => {
+        if (this.copiedButtonId() === id) {
+          this.copiedButtonId.set(null);
+        }
+      }, 2500);
+    }
+
+    return success;
+  }
+
+  async copyXPost(itemIndex: number) {
+    const item = this.generatedNews()[itemIndex];
+    if (!item) return;
+
+    const twitterText = (this.getActiveTwitterText(item) || item.twitterBody || '').trim();
+    const hashtags = (item.hashtags || '').trim();
+
+    // Clean separation with exactly two newlines: Post body + Blank line + Hashtags
+    const fullContent = hashtags ? `${twitterText}\n\n${hashtags}` : twitterText;
+
+    const success = await this.copyToClipboard(fullContent, 'btn-copy-x-' + itemIndex);
+    if (success) {
+      const tagCount = this.countHashtags(hashtags);
+      this.trendFeedbackMessage.set(`✓ Post completo copiado con éxito (${tagCount} hashtags incluidos)`);
+      setTimeout(() => {
+        this.trendFeedbackMessage.set(null);
+      }, 3500);
+    }
+  }
+
+  async copyHashtagsOnly(itemIndex: number) {
+    const item = this.generatedNews()[itemIndex];
+    if (!item) return;
+    const hashtags = (item.hashtags || '').trim();
+    if (!hashtags) return;
+
+    await this.copyToClipboard(hashtags, 'btn-copy-hash-' + itemIndex);
+    this.trendFeedbackMessage.set(`✓ Hashtags copiados: ${hashtags}`);
+    setTimeout(() => {
+      this.trendFeedbackMessage.set(null);
+    }, 3000);
+  }
+
+  async copyWhatsAppPost(itemIndex: number) {
+    const item = this.generatedNews()[itemIndex];
+    if (!item) return;
+    const waText = this.getActiveWhatsAppText(item);
+    await this.copyToClipboard(waText, 'btn-copy-wa-' + itemIndex);
+  }
+
+  async copyAll(itemIndex: number) {
+    const item = this.generatedNews()[itemIndex];
+    if (!item) return;
+
+    const wa = (this.getActiveWhatsAppText(item) || '').trim();
+    const tw = (this.getActiveTwitterText(item) || item.twitterBody || '').trim();
+    const hash = (item.hashtags || '').trim();
+
+    const sections = [
+      `📱 WHATSAPP:\n${wa}`,
+      `🐦 X (TWITTER):\n${tw}`,
+      hash ? `🏷️ HASHTAGS:\n${hash}` : ''
+    ].filter(Boolean).join('\n\n');
+
+    const ok = await this.copyToClipboard(sections, 'btn-copy-all-' + itemIndex);
+    if (ok) {
+      this.trendFeedbackMessage.set('✓ Todo copiado (WhatsApp + Post X + Hashtags)');
+      setTimeout(() => {
+        this.trendFeedbackMessage.set(null);
+      }, 3000);
+    }
+  }
+
+  countHashtags(hashtagsStr: string): number {
+    if (!hashtagsStr) return 0;
+    return hashtagsStr.split(/\s+/).filter(t => t.startsWith('#')).length;
   }
 
   getWordCount(text: string): number {
@@ -863,9 +1237,9 @@ export class AppComponent implements OnInit {
 
       const labelMap: Record<string, string> = {
         version_b: '⚡ Versión B',
-        shorter: '✂️ Más Corta',
-        new_metaphor: '🔄 Nueva Metáfora',
-        deep_dive_data: '💡 Más Dato Duro'
+        shorter: '✂️ ~250 Palabras',
+        new_metaphor: '🔄 Otra Metáfora',
+        deep_dive_data: '💡 Desglose Cifra'
       };
 
       const newVersionLabel = labelMap[action] || 'Variante';
@@ -907,6 +1281,95 @@ export class AppComponent implements OnInit {
     }
   }
 
+  getActiveTwitterText(item: NewsItem): string {
+    if (item.twitterVersions && item.activeTwitterVersionIndex !== undefined && item.twitterVersions[item.activeTwitterVersionIndex]) {
+      return item.twitterVersions[item.activeTwitterVersionIndex].twitterBody;
+    }
+    return item.twitterBody;
+  }
+
+  selectTwitterVersion(itemIndex: number, versionIndex: number) {
+    this.generatedNews.update(items => {
+      const updated = [...items];
+      const item = { ...updated[itemIndex] };
+      item.activeTwitterVersionIndex = versionIndex;
+      item.twitterBody = item.twitterVersions?.[versionIndex]?.twitterBody || item.twitterBody;
+      updated[itemIndex] = item;
+      return updated;
+    });
+  }
+
+  async adjustTwitter(
+    itemIndex: number,
+    action: 'hook_viral' | 'thread' | 'debate' | 'key_takeaways'
+  ) {
+    const items = this.generatedNews();
+    const item = items[itemIndex];
+    if (!item || item.isAdjustingTwitter) return;
+
+    this.generatedNews.update(list => {
+      const copy = [...list];
+      copy[itemIndex] = {
+        ...copy[itemIndex],
+        isAdjustingTwitter: true,
+        twitterAdjustmentError: undefined
+      };
+      return copy;
+    });
+
+    try {
+      const currentText = this.getActiveTwitterText(item);
+      const newText = await this.geminiService.generateAlternativeTwitterText(
+        currentText,
+        action,
+        item.category || item.title
+      );
+
+      const labelMap: Record<string, string> = {
+        hook_viral: '⚡ Gancho Viral',
+        thread: '🧵 Mini-Hilo',
+        debate: '💬 Debate',
+        key_takeaways: '📌 3 Claves'
+      };
+
+      const newVersionLabel = labelMap[action] || 'Variante';
+
+      this.generatedNews.update(list => {
+        const copy = [...list];
+        const currentItem = { ...copy[itemIndex] };
+        const versions = currentItem.twitterVersions ? [...currentItem.twitterVersions] : [
+          { label: 'Original 2026', twitterBody: currentItem.twitterBody }
+        ];
+
+        const existingIdx = versions.findIndex(v => v.label === newVersionLabel);
+        if (existingIdx >= 0) {
+          versions[existingIdx] = { label: newVersionLabel, twitterBody: newText };
+          currentItem.activeTwitterVersionIndex = existingIdx;
+        } else {
+          versions.push({ label: newVersionLabel, twitterBody: newText });
+          currentItem.activeTwitterVersionIndex = versions.length - 1;
+        }
+
+        currentItem.twitterVersions = versions;
+        currentItem.twitterBody = newText;
+        currentItem.isAdjustingTwitter = false;
+        copy[itemIndex] = currentItem;
+        return copy;
+      });
+    } catch (err: any) {
+      console.error('Error adjusting Twitter text:', err);
+      this.generatedNews.update(list => {
+        const copy = [...list];
+        copy[itemIndex] = {
+          ...copy[itemIndex],
+          isAdjustingTwitter: false,
+          twitterAdjustmentError: err?.message || 'No se pudo generar el formato para X. Intenta de nuevo.'
+        };
+        return copy;
+      });
+    }
+  }
+
   async generateImageForNews(itemIndex: number) {
     const items = this.generatedNews();
     const item = items[itemIndex];
@@ -923,15 +1386,14 @@ export class AppComponent implements OnInit {
     });
 
     try {
-      const rawImageUrl = await this.geminiService.generateCoverImage(item.imagePrompt);
-      const watermarkedImageUrl = await this.applyWatermarkToImage(rawImageUrl, 'entendiendocosas.lat');
+      const generatedImageUrl = await this.geminiService.generateCoverImage(item.imagePrompt);
 
       this.generatedNews.update(list => {
         const copy = [...list];
         copy[itemIndex] = {
           ...copy[itemIndex],
           isGeneratingImage: false,
-          generatedImageUrl: watermarkedImageUrl,
+          generatedImageUrl: generatedImageUrl,
           imageError: undefined
         };
         return copy;
@@ -940,7 +1402,7 @@ export class AppComponent implements OnInit {
       console.error('Error generating cover image:', err);
       let errorMsg = err?.message || 'No se pudo generar la portada con los modelos disponibles. Intenta de nuevo.';
       if (typeof errorMsg === 'string' && (errorMsg.includes('403') || errorMsg.includes('PERMISSION_DENIED') || errorMsg.includes('permission'))) {
-        errorMsg = 'Tu API Key de Gemini actual no tiene habilitada la API de generación de imágenes (Imagen / Gemini Image) en Google Cloud / AI Studio. Puedes copiar el prompt visual abajo para usarlo directamente en Midjourney o DALL-E.';
+        errorMsg = 'Tu API Key de Gemini actual no tiene habilitada la API de generación de imágenes (Nano Banana 2.1 / Gemini Image) en Google Cloud / AI Studio. Puedes copiar el prompt visual abajo para usarlo directamente en Midjourney o DALL-E.';
       }
 
       this.generatedNews.update(list => {
@@ -963,86 +1425,144 @@ export class AppComponent implements OnInit {
 
     const a = document.createElement('a');
     a.href = imageUrl;
-    a.download = `${cleanTitle}-portada-1x1.png`;
+    a.download = `${cleanTitle}-editorial-4x5.png`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
   }
 
-  /**
-   * Dibuja y funde permanentemente la marca de agua entendiendocosas.lat en la esquina inferior de la imagen.
-   */
-  private applyWatermarkToImage(sourceDataUrl: string, watermarkText: string): Promise<string> {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => {
-        try {
-          const canvas = document.createElement('canvas');
-          canvas.width = img.naturalWidth || 1024;
-          canvas.height = img.naturalHeight || 1024;
-          const ctx = canvas.getContext('2d');
-          if (!ctx) {
-            resolve(sourceDataUrl);
-            return;
-          }
+  async loadXTrends() {
+    this.isLoadingTrends.set(true);
+    try {
+      const trends = await this.geminiService.fetchXTrends('México');
+      if (trends && trends.length > 0) {
+        this.xTrends.set(trends);
+      }
+    } catch (e) {
+      console.warn('No se pudieron actualizar tendencias en vivo:', e);
+    } finally {
+      this.isLoadingTrends.set(false);
+    }
+  }
 
-          // Dibujar la imagen original
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  toggleAutoLinkXTrends() {
+    this.autoLinkXTrends.update(v => !v);
+  }
 
-          // Calcular proporciones según la resolución de la imagen
-          const baseDimension = Math.min(canvas.width, canvas.height);
-          const fontSize = Math.max(14, Math.round(baseDimension * 0.026));
-          const paddingX = Math.round(fontSize * 0.9);
-          const paddingY = Math.round(fontSize * 0.55);
-          const borderRadius = Math.round(fontSize * 0.4);
-          const margin = Math.round(baseDimension * 0.035);
-
-          ctx.font = `bold ${fontSize}px system-ui, -apple-system, sans-serif`;
-          const textMetrics = ctx.measureText(watermarkText);
-          const boxWidth = textMetrics.width + (paddingX * 2) + Math.round(fontSize * 0.8);
-          const boxHeight = fontSize + (paddingY * 2);
-          const x = canvas.width - boxWidth - margin;
-          const y = canvas.height - boxHeight - margin;
-
-          // Fondo de la píldora de marca de agua con sombra
-          ctx.save();
-          ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
-          ctx.shadowBlur = 10;
-          ctx.shadowOffsetX = 0;
-          ctx.shadowOffsetY = 4;
-
-          ctx.fillStyle = 'rgba(10, 15, 20, 0.82)';
-          ctx.beginPath();
-          ctx.roundRect(x, y, boxWidth, boxHeight, borderRadius);
-          ctx.fill();
-
-          // Borde fino sutil
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-          ctx.lineWidth = 1.5;
-          ctx.stroke();
-          ctx.restore();
-
-          // Punto distintivo color menta/teal
-          const dotRadius = Math.round(fontSize * 0.22);
-          ctx.fillStyle = '#2dd4bf'; // teal-400
-          ctx.beginPath();
-          ctx.arc(x + paddingX + dotRadius, y + (boxHeight / 2), dotRadius, 0, Math.PI * 2);
-          ctx.fill();
-
-          // Texto de la marca de agua
-          ctx.fillStyle = '#ffffff';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(watermarkText, x + paddingX + (dotRadius * 2) + Math.round(fontSize * 0.4), y + (boxHeight / 2));
-
-          resolve(canvas.toDataURL('image/png', 0.95));
-        } catch (e) {
-          console.warn('Error applying watermark to canvas, returning raw image:', e);
-          resolve(sourceDataUrl);
-        }
-      };
-      img.onerror = () => resolve(sourceDataUrl);
-      img.src = sourceDataUrl;
+  toggleTrendSelector(itemIndex: number) {
+    this.generatedNews.update(list => {
+      const copy = [...list];
+      if (copy[itemIndex]) {
+        copy[itemIndex] = {
+          ...copy[itemIndex],
+          showTrendSelector: !copy[itemIndex].showTrendSelector
+        };
+      }
+      return copy;
     });
+  }
+
+  isTrendInCard(item: NewsItem, hashtag: string): boolean {
+    if (!item?.hashtags || !hashtag) return false;
+    const cleanTag = (hashtag.trim().startsWith('#') ? hashtag.trim() : `#${hashtag.trim()}`).toLowerCase();
+    const existing = item.hashtags.toLowerCase().split(/\s+/).filter(Boolean);
+    return existing.includes(cleanTag);
+  }
+
+  toggleTrendInCard(itemIndex: number, hashtag: string) {
+    const cleanTag = hashtag.trim().startsWith('#') ? hashtag.trim() : `#${hashtag.trim()}`;
+
+    this.generatedNews.update(list => {
+      const copy = [...list];
+      const item = copy[itemIndex];
+      if (!item) return copy;
+
+      const current = (item.hashtags || '').trim();
+      const existingTokens = current.split(/\s+/).filter(Boolean);
+      const isAlreadyAdded = existingTokens.some(t => t.toLowerCase() === cleanTag.toLowerCase());
+
+      let updated = '';
+      if (isAlreadyAdded) {
+        // Remove hashtag
+        updated = existingTokens.filter(t => t.toLowerCase() !== cleanTag.toLowerCase()).join(' ');
+      } else {
+        // Add hashtag before #EntendiendoCosas if present, otherwise append
+        if (current.includes('#EntendiendoCosas')) {
+          updated = current.replace('#EntendiendoCosas', `${cleanTag} #EntendiendoCosas`);
+        } else {
+          updated = current ? `${current} ${cleanTag}` : cleanTag;
+        }
+      }
+
+      copy[itemIndex] = {
+        ...item,
+        hashtags: updated.trim()
+      };
+      return copy;
+    });
+
+    const currentItem = this.generatedNews()[itemIndex];
+    const isNowAdded = this.isTrendInCard(currentItem, cleanTag);
+    this.trendFeedbackMessage.set(
+      isNowAdded
+        ? `✓ Tendencia ${cleanTag} añadida a esta publicación`
+        : `Tendencia ${cleanTag} retirada de los hashtags`
+    );
+    setTimeout(() => {
+      this.trendFeedbackMessage.set(null);
+    }, 3000);
+  }
+
+  appendTrendToCard(itemIndex: number, hashtag: string) {
+    this.toggleTrendInCard(itemIndex, hashtag);
+  }
+
+  addTrendToAllOrActive(hashtag: string) {
+    const cleanTag = hashtag.trim().startsWith('#') ? hashtag.trim() : `#${hashtag.trim()}`;
+
+    if (this.generatedNews().length === 0) {
+      this.copyTrend(cleanTag);
+      return;
+    }
+
+    let addedCount = 0;
+    this.generatedNews.update(list => {
+      return list.map(item => {
+        const current = (item.hashtags || '').trim();
+        const existingTokens = current.split(/\s+/).filter(Boolean);
+        if (existingTokens.some(t => t.toLowerCase() === cleanTag.toLowerCase())) {
+          return item;
+        }
+        addedCount++;
+        let updated = '';
+        if (current.includes('#EntendiendoCosas')) {
+          updated = current.replace('#EntendiendoCosas', `${cleanTag} #EntendiendoCosas`);
+        } else {
+          updated = current ? `${current} ${cleanTag}` : cleanTag;
+        }
+        return {
+          ...item,
+          hashtags: updated.trim()
+        };
+      });
+    });
+
+    this.trendFeedbackMessage.set(
+      addedCount > 0
+        ? `✓ Tendencia ${cleanTag} añadida a todas las notas (${this.generatedNews().length})`
+        : `El hashtag ${cleanTag} ya está presente en las notas`
+    );
+    setTimeout(() => {
+      this.trendFeedbackMessage.set(null);
+    }, 3200);
+  }
+
+  async copyTrend(hashtag: string) {
+    const cleanTag = hashtag.trim().startsWith('#') ? hashtag.trim() : `#${hashtag.trim()}`;
+    await this.copyToClipboard(cleanTag, 'btn-trend-' + cleanTag);
+    this.trendFeedbackMessage.set(`✓ Hashtag ${cleanTag} copiado al portapapeles`);
+    setTimeout(() => {
+      this.trendFeedbackMessage.set(null);
+    }, 2500);
   }
 }
