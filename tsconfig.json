@@ -25,7 +25,12 @@
     }
   },
   "files": [
-    "./index.tsx"
+    "./index.tsx",
+    "src/main.server.ts",
+    "src/server.ts"
+  ],
+  "include": [
+    "src/**/*"
   ],
   "angularCompilerOptions": {
     "disableTypeScriptVersionCheck": true

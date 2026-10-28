@@ -680,19 +680,19 @@ interface NewsItem {
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                             </svg>
-                            <span class="text-xs font-bold tracking-wider uppercase">Imagen Editorial (4:5)</span>
+                            <span class="text-xs font-bold tracking-wider uppercase">Imagen Editorial (4:3)</span>
                          </div>
                          <span class="text-[10px] text-rose-200 bg-rose-950/70 border border-rose-700/60 px-2 py-0.5 rounded-full font-medium">Nano Banana 2.1</span>
                       </div>
 
                       <!-- AI Generated Cover Image Preview if present -->
                       @if (item.generatedImageUrl) {
-                        <div class="relative rounded-xl overflow-hidden border border-rose-500/40 shadow-xl bg-black aspect-[4/5] max-w-[260px] sm:max-w-[280px] mx-auto w-full group/cover">
+                        <div class="relative rounded-xl overflow-hidden border border-rose-500/40 shadow-xl bg-black aspect-[4/3] max-w-full sm:max-w-[340px] mx-auto w-full group/cover">
                            <img [src]="item.generatedImageUrl" alt="Póster editorial de la noticia" class="w-full h-full object-cover transition-transform duration-500 group-hover/cover:scale-105" />
                            <div class="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent flex flex-col justify-end p-3 gap-2">
                               <div class="flex items-center justify-between">
                                  <span class="text-[11px] font-semibold text-white/90 truncate max-w-[140px]">{{ item.title }}</span>
-                                 <span class="text-[10px] bg-rose-600 text-white font-bold px-1.5 py-0.5 rounded">NB 2.1 • 4:5</span>
+                                 <span class="text-[10px] bg-rose-600 text-white font-bold px-1.5 py-0.5 rounded">NB 2.1 • 4:3</span>
                               </div>
                               <div class="grid grid-cols-2 gap-2">
                                  <button
@@ -866,8 +866,10 @@ export class AppComponent implements OnInit {
   });
 
   ngOnInit() {
-    // Automatically load fresh X trends in background on start
-    this.loadXTrends();
+    // Automatically load fresh X trends in background on start in browser
+    if (typeof window !== 'undefined') {
+      this.loadXTrends();
+    }
 
     // Check URL parameters for Agent automatic interaction
     if (typeof window !== 'undefined') {
@@ -1034,18 +1036,24 @@ export class AppComponent implements OnInit {
       }));
       this.generatedNews.set(newsWithVersions);
     } catch (err: any) {
-      console.error("Error detected:", err);
+      console.warn("Aviso al generar noticias:", err?.message || err);
       const errorMessage = (err.message || JSON.stringify(err) || '').toLowerCase();
       
-      // Check for 403 Permission Denied
+      // Check for 403 Permission Denied or Missing/Invalid API Key
       if (
         errorMessage.includes('permission_denied') ||
         errorMessage.includes('does not have permission') ||
         errorMessage.includes('permissiondenied') ||
         errorMessage.includes('403') ||
-        errorMessage.includes('forbidden')
+        errorMessage.includes('forbidden') ||
+        errorMessage.includes('falta la api key') ||
+        errorMessage.includes('api key no válida') ||
+        errorMessage.includes('api_key_invalid') ||
+        errorMessage.includes('api key not valid') ||
+        errorMessage.includes('api key')
       ) {
         this.isPermissionDenied.set(true);
+        this.error.set(null);
       } else if (
         errorMessage.includes('prepayment') ||
         errorMessage.includes('depleted') ||
@@ -1386,7 +1394,11 @@ export class AppComponent implements OnInit {
     });
 
     try {
-      const generatedImageUrl = await this.geminiService.generateCoverImage(item.imagePrompt);
+      const generatedImageUrl = await this.geminiService.generateCoverImage(
+        item.imagePrompt,
+        item.title,
+        item.category
+      );
 
       this.generatedNews.update(list => {
         const copy = [...list];
@@ -1399,7 +1411,7 @@ export class AppComponent implements OnInit {
         return copy;
       });
     } catch (err: any) {
-      console.error('Error generating cover image:', err);
+      console.warn('Aviso al generar portada editorial:', err?.message || err);
       let errorMsg = err?.message || 'No se pudo generar la portada con los modelos disponibles. Intenta de nuevo.';
       if (typeof errorMsg === 'string' && (errorMsg.includes('403') || errorMsg.includes('PERMISSION_DENIED') || errorMsg.includes('permission'))) {
         errorMsg = 'Tu API Key de Gemini actual no tiene habilitada la API de generación de imágenes (Nano Banana 2.1 / Gemini Image) en Google Cloud / AI Studio. Puedes copiar el prompt visual abajo para usarlo directamente en Midjourney o DALL-E.';
@@ -1425,7 +1437,7 @@ export class AppComponent implements OnInit {
 
     const a = document.createElement('a');
     a.href = imageUrl;
-    a.download = `${cleanTitle}-editorial-4x5.png`;
+    a.download = `${cleanTitle}-editorial-4x3.png`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

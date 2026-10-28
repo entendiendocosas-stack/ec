@@ -12,10 +12,8 @@ if (typeof process === 'undefined') {
   (process as any).env = {};
 }
 
-bootstrapApplication(AppComponent, {
-  providers: [
-    provideZonelessChangeDetection()
-  ]
-}).catch(err => console.error(err));
+import { appConfig } from './src/app.config';
+
+bootstrapApplication(AppComponent, appConfig).catch(err => console.error(err));
 
 // AI Studio always uses an `index.tsx` file for all project types.
